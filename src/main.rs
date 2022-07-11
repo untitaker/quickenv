@@ -101,9 +101,9 @@ fn safe_command(
     command: &str,
     mut f: impl FnMut(&str) -> Result<(), Error>,
 ) -> Result<(), Error> {
-    stdin.write(b"\necho //QUICKENV-BEGIN\n")?;
-    stdin.write(command.as_bytes())?;
-    stdin.write(b"\necho //QUICKENV-END\n")?;
+    stdin.write_all(b"\necho //QUICKENV-BEGIN\n")?;
+    stdin.write_all(command.as_bytes())?;
+    stdin.write_all(b"\necho //QUICKENV-END\n")?;
     let mut found_begin = false;
 
     for line in stdout.lines() {
@@ -147,7 +147,7 @@ fn dump_env(
 
 fn get_quickenv_home() -> Result<PathBuf, Error> {
     let rv = home::home_dir()
-        .ok_or(anyhow::anyhow!("failed to find your HOME dir"))?
+        .ok_or_else(|| anyhow::anyhow!("failed to find your HOME dir"))?
         .join(".quickenv/");
     Ok(rv)
 }
@@ -164,7 +164,7 @@ fn compute_envvars() -> Result<(), Error> {
     let mut stdin = cmd.stdin.take().unwrap();
     let mut stdout_buf = BufReader::new(cmd.stdout.take().unwrap());
     let old_env = dump_env(&mut stdin, &mut stdout_buf)?;
-    stdin.write(b"eval \"$(direnv stdlib)\"\n")?;
+    stdin.write_all(b"eval \"$(direnv stdlib)\"\n")?;
 
     io::copy(&mut ctx.envrc, &mut stdin)?;
 
@@ -175,7 +175,7 @@ fn compute_envvars() -> Result<(), Error> {
 
     for (key, value) in new_env {
         if old_env.get(&key) != Some(&value) {
-            write!(&mut env_cache, "{key}={value}\n")?;
+            writeln!(&mut env_cache, "{key}={value}")?;
         }
     }
 
@@ -255,7 +255,7 @@ fn command_reload() -> Result<(), Error> {
     compute_envvars()?;
     let envvars = get_envvars()?.expect("somehow didn't end up writing envvars");
     if let Some(path_envvar) = envvars.get("PATH") {
-        let paths = get_new_paths(&path_envvar)?;
+        let paths = get_new_paths(path_envvar)?;
         if !paths.is_empty() {
             log::info!("{} new entries in PATH. use 'quickenv shim <command>' to put a shim binary into your global PATH", paths.len());
             for path in paths {
@@ -337,7 +337,7 @@ fn command_unshim(commands: Vec<String>) -> Result<(), Error> {
 fn check_for_shim() -> Result<(), Error> {
     let program_name = std::env::args()
         .next()
-        .ok_or(anyhow::anyhow!("failed to determine own program name"))?;
+        .ok_or_else(|| anyhow::anyhow!("failed to determine own program name"))?;
 
     if program_name == "quickenv" {
         return Ok(());
