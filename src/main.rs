@@ -42,7 +42,7 @@ enum Command {
         #[clap(value_parser)]
         /// The names of the commands to remove.
         commands: Vec<String>,
-    }
+    },
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -237,7 +237,6 @@ fn get_envvars() -> Result<Option<BTreeMap<String, String>>, Error> {
     Ok(None)
 }
 
-
 fn get_new_paths(path_envvar: &str) -> Result<BTreeSet<PathBuf>, Error> {
     let own_path = std::env::var("PATH")?;
     let current_paths = std::env::split_paths(&own_path)
@@ -327,7 +326,10 @@ fn command_unshim(commands: Vec<String>) -> Result<(), Error> {
         }
     }
 
-    log::info!("removed {} shims from ~/.quickenv/bin/. Use 'quickenv shim <command>' to add them again", changes);
+    log::info!(
+        "removed {} shims from ~/.quickenv/bin/. Use 'quickenv shim <command>' to add them again",
+        changes
+    );
 
     Ok(())
 }
@@ -344,14 +346,14 @@ fn check_for_shim() -> Result<(), Error> {
     let own_path = which::which(&program_name)?;
 
     match get_envvars() {
-        Ok(None) => {
-            Err(anyhow::anyhow!("run 'quickenv reload' first to generate envvars"))?
-        }
+        Ok(None) => Err(anyhow::anyhow!(
+            "run 'quickenv reload' first to generate envvars"
+        ))?,
         Ok(Some(envvars)) => {
             for (k, v) in envvars {
                 std::env::set_var(k, v);
             }
-        },
+        }
         Err(Error::NoEnvrc) => (),
         Err(e) => {
             return Err(e);
