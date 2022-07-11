@@ -337,6 +337,8 @@ fn check_for_shim() -> Result<(), Error> {
         return Ok(());
     }
 
+    let own_path = which::which(&program_name)?;
+
     match get_envvars() {
         Ok(None) => {
             Err(anyhow::anyhow!("run 'quickenv reload' first to generate envvars"))?
@@ -352,12 +354,12 @@ fn check_for_shim() -> Result<(), Error> {
         }
     }
 
-    let own_path = which::which(&program_name)?;
-
     for path in which::which_all(&program_name)? {
         if path == own_path {
             continue;
         }
+
+        log::debug!("execvp {}", path.display());
 
         Err(exec::execvp(path, std::env::args()))?
     }
