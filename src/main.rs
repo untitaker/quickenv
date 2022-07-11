@@ -6,6 +6,8 @@ use std::os::unix::fs::symlink;
 use std::path::PathBuf;
 use std::process::{self, Stdio};
 
+use log::LevelFilter;
+
 use anyhow::Error as BoxError;
 use clap::Parser;
 
@@ -75,9 +77,11 @@ fn main() {
 }
 
 fn main_inner() -> Result<(), Error> {
-    env_logger::init_from_env(
-        env_logger::Env::default().filter_or(env_logger::DEFAULT_FILTER_ENV, "info"),
-    );
+    env_logger::Builder::new()
+        .format_timestamp(None)
+        .filter_level(LevelFilter::Info)
+        .parse_env("QUICKENV_LOG")
+        .init();
 
     check_for_shim()?;
 
