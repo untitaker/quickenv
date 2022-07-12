@@ -3,7 +3,7 @@ use std::env::VarError;
 use std::io::{self, BufRead, BufReader, BufWriter, Write};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::symlink;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{self, Stdio};
 
 use log::LevelFilter;
@@ -137,8 +137,14 @@ fn dump_env(
     let mut environ = BTreeMap::new();
 
     safe_command(stdin, stdout, "env", |line| {
-        let (var_name, value) = line.split_once('=').unwrap_or((line, ""));
-        environ.insert(var_name.to_owned(), value.to_owned());
+        match line.split_once('=') {
+            Some((var_name, value)) => {
+                environ.insert(var_name.to_owned(), value.to_owned());
+            }
+            None => {
+                log::warn!("ignoring unparseable envvar: {}", line);
+            }
+        };
         Ok(())
     })?;
 
@@ -146,10 +152,13 @@ fn dump_env(
 }
 
 fn get_quickenv_home() -> Result<PathBuf, Error> {
-    let rv = home::home_dir()
-        .ok_or_else(|| anyhow::anyhow!("failed to find your HOME dir"))?
-        .join(".quickenv/");
-    Ok(rv)
+    if let Ok(home) = std::env::var("QUICKENV_HOME") {
+        Ok(Path::new(&home).to_owned())
+    } else {
+        Ok(home::home_dir()
+            .ok_or_else(|| anyhow::anyhow!("failed to find your HOME dir"))?
+            .join(".quickenv/"))
+    }
 }
 
 fn compute_envvars() -> Result<(), Error> {
@@ -237,31 +246,45 @@ fn get_envvars() -> Result<Option<BTreeMap<String, String>>, Error> {
     Ok(None)
 }
 
-fn get_new_paths(path_envvar: &str) -> Result<BTreeSet<PathBuf>, Error> {
-    let own_path = std::env::var("PATH")?;
+fn get_new_paths(
+    old_path_envvar: Option<&str>,
+    new_path_envvar: Option<&str>,
+) -> Result<BTreeSet<PathBuf>, Error> {
+    let own_path = old_path_envvar
+        .map(|x| Ok(x.to_owned()))
+        .unwrap_or_else(|| std::env::var("PATH"))?;
     let current_paths = std::env::split_paths(&own_path)
-        .filter_map(|x| std::fs::canonicalize(x).ok())
+        .map(|x| std::fs::canonicalize(&x).unwrap_or(x))
         .collect::<BTreeSet<PathBuf>>();
 
-    let new_paths = std::env::split_paths(&path_envvar)
-        .filter_map(|x| std::fs::canonicalize(x).ok())
-        .filter(|path| !current_paths.contains(path))
-        .collect::<BTreeSet<PathBuf>>();
-
-    Ok(new_paths)
+    if let Some(new_path_envvar) = new_path_envvar {
+        let new_paths = std::env::split_paths(new_path_envvar)
+            .map(|x| std::fs::canonicalize(&x).unwrap_or(x))
+            .filter(|path| !current_paths.contains(path))
+            .collect::<BTreeSet<PathBuf>>();
+        Ok(new_paths)
+    } else {
+        Ok(Default::default())
+    }
 }
 
 fn command_reload() -> Result<(), Error> {
+    let old_envvars = get_envvars()?;
+    let old_path_envvar = old_envvars
+        .as_ref()
+        .and_then(|envvars| envvars.get("PATH"))
+        .map(String::as_str);
     compute_envvars()?;
-    let envvars = get_envvars()?.expect("somehow didn't end up writing envvars");
-    if let Some(path_envvar) = envvars.get("PATH") {
-        let paths = get_new_paths(path_envvar)?;
-        if !paths.is_empty() {
-            log::info!("{} new entries in PATH. use 'quickenv shim <command>' to put a shim binary into your global PATH", paths.len());
-            for path in paths {
-                println!("{}", path.display());
-            }
+    let new_envvars = get_envvars()?.expect("somehow didn't end up writing envvars");
+    let new_path_envvar = new_envvars.get("PATH").map(String::as_str);
+
+    let paths = get_new_paths(old_path_envvar, new_path_envvar)?;
+    if !paths.is_empty() {
+        for path in &paths {
+            log::info!("new PATH entry: {}", path.display());
         }
+
+        log::info!("{} new entries in PATH. use 'quickenv shim <command>' to put a shim binary into your global PATH", paths.len());
     }
 
     Ok(())
@@ -291,6 +314,16 @@ fn command_shim(commands: Vec<String>) -> Result<(), Error> {
     let mut changes = 0;
 
     for command in &commands {
+        if command == "quickenv" {
+            log::warn!("not shimming own binary");
+            continue;
+        }
+
+        let old_command_path = which::which(command);
+        if let Ok(path) = old_command_path {
+            log::warn!("shadowing binary at {}", path.display());
+        }
+
         let command_path = bin_dir.join(command);
         let was_there = std::fs::remove_file(&command_path).is_ok();
         symlink(&self_binary, &command_path)?;
@@ -310,7 +343,11 @@ fn command_shim(commands: Vec<String>) -> Result<(), Error> {
         }
     }
 
-    log::info!("created {} new shims in ~/.quickenv/bin/. Use 'quickenv unshim <command>' to remove them again", changes);
+    log::info!(
+        "created {} new shims in {}. Use 'quickenv unshim <command>' to remove them again",
+        changes,
+        bin_dir.display()
+    );
 
     Ok(())
 }
@@ -320,6 +357,11 @@ fn command_unshim(commands: Vec<String>) -> Result<(), Error> {
     let bin_dir = quickenv_dir.join("bin/");
     let mut changes = 0;
     for command in &commands {
+        if command == "quickenv" {
+            log::warn!("not unshimming own binary");
+            continue;
+        }
+
         let command_path = bin_dir.join(command);
         if std::fs::remove_file(&command_path).is_ok() {
             changes += 1;
@@ -327,8 +369,9 @@ fn command_unshim(commands: Vec<String>) -> Result<(), Error> {
     }
 
     log::info!(
-        "removed {} shims from ~/.quickenv/bin/. Use 'quickenv shim <command>' to add them again",
-        changes
+        "removed {} shims from {}. Use 'quickenv shim <command>' to add them again",
+        changes,
+        bin_dir.display()
     );
 
     Ok(())
@@ -340,8 +383,11 @@ fn check_for_shim() -> Result<(), Error> {
         .ok_or_else(|| anyhow::anyhow!("failed to determine own program name"))?;
 
     if program_name == "quickenv" {
+        log::debug!("own program name is quickenv, so no shim running");
         return Ok(());
     }
+
+    log::debug!("attempting to launch shim {}", program_name);
 
     let own_path = which::which(&program_name)?;
 
