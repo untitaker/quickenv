@@ -113,3 +113,10 @@ test_verbosity() {
 }
 
 testcase test_verbosity
+
+test_script_failure() {
+    echo 'exit 1' > .envrc
+    ! quickenv reload
+}
+
+testcase test_script_failure

@@ -11,6 +11,8 @@ use log::LevelFilter;
 use anyhow::Error as BoxError;
 use clap::Parser;
 
+type Env = BTreeMap<String, String>;
+
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 struct Args {
@@ -95,62 +97,6 @@ fn main_inner() -> Result<(), Error> {
     }
 }
 
-fn safe_command(
-    stdin: &mut impl Write,
-    stdout: &mut impl BufRead,
-    command: &str,
-    mut f: impl FnMut(&str) -> Result<(), Error>,
-) -> Result<(), Error> {
-    stdin.write_all(b"\necho //QUICKENV-BEGIN\n")?;
-    stdin.write_all(command.as_bytes())?;
-    stdin.write_all(b"\necho //QUICKENV-END\n")?;
-    let mut found_begin = false;
-
-    for line in stdout.lines() {
-        let line = line?;
-        let line = line.trim_end_matches('\n');
-
-        if !found_begin {
-            if line == "//QUICKENV-BEGIN" {
-                found_begin = true;
-            } else {
-                println!("{line}");
-            }
-
-            continue;
-        }
-
-        if line == "//QUICKENV-END" {
-            break;
-        }
-
-        f(line)?;
-    }
-
-    Ok(())
-}
-
-fn dump_env(
-    stdin: &mut impl Write,
-    stdout: &mut impl BufRead,
-) -> Result<BTreeMap<String, String>, Error> {
-    let mut environ = BTreeMap::new();
-
-    safe_command(stdin, stdout, "env", |line| {
-        match line.split_once('=') {
-            Some((var_name, value)) => {
-                environ.insert(var_name.to_owned(), value.to_owned());
-            }
-            None => {
-                log::warn!("ignoring unparseable envvar: {}", line);
-            }
-        };
-        Ok(())
-    })?;
-
-    Ok(environ)
-}
-
 fn get_quickenv_home() -> Result<PathBuf, Error> {
     if let Ok(home) = std::env::var("QUICKENV_HOME") {
         Ok(Path::new(&home).to_owned())
@@ -161,25 +107,164 @@ fn get_quickenv_home() -> Result<PathBuf, Error> {
     }
 }
 
+#[derive(Clone, Copy)]
+enum ParseState {
+    PreBefore,
+    InBefore,
+    PreAfter,
+    InAfter,
+    End,
+}
+
+fn parse_env_line(line: &str, env: &mut Env, prev_var_name: &mut Option<String>) {
+    match line.split_once('=') {
+        Some((var_name, value)) => {
+            env.insert(var_name.to_owned(), value.to_owned());
+            *prev_var_name = Some(var_name.to_owned());
+        }
+        None => {
+            let prev_value = env
+                .get_mut(prev_var_name.as_ref().unwrap().as_str())
+                .unwrap();
+            prev_value.push('\n');
+            prev_value.push_str(line);
+        }
+    }
+}
+
+fn parse_env_diff<R: BufRead>(
+    reader: R,
+    mut script_output: impl FnMut(&str),
+) -> Result<(Env, Env), Error> {
+    let mut parse_state = ParseState::PreBefore;
+    let mut old_env = BTreeMap::new();
+    let mut new_env = BTreeMap::new();
+    let mut prev_var_name = None;
+
+    for raw_line in reader.lines() {
+        let raw_line = raw_line?;
+        let line = raw_line.trim_end_matches('\n');
+        match (parse_state, line) {
+            (ParseState::PreBefore, "// BEGIN QUICKENV-BEFORE") => {
+                prev_var_name = None;
+                parse_state = ParseState::InBefore;
+            }
+            (ParseState::InBefore, "// END QUICKENV-BEFORE") => {
+                prev_var_name = None;
+                parse_state = ParseState::PreAfter;
+            }
+            (ParseState::PreAfter, "// BEGIN QUICKENV-AFTER") => {
+                prev_var_name = None;
+                parse_state = ParseState::InAfter;
+            }
+            (ParseState::InAfter, "// END QUICKENV-AFTER") => {
+                prev_var_name = None;
+                parse_state = ParseState::End;
+            }
+            (ParseState::InBefore, line) => {
+                parse_env_line(line, &mut old_env, &mut prev_var_name);
+            }
+            (ParseState::InAfter, line) => {
+                parse_env_line(line, &mut new_env, &mut prev_var_name);
+            }
+            (_, _) => {
+                script_output(&raw_line);
+            }
+        }
+    }
+
+    Ok((old_env, new_env))
+}
+
+#[test]
+fn test_parse_env_diff() {
+    let input = br#"
+some output 1
+// BEGIN QUICKENV-BEFORE
+hello=world
+bogus=wogus
+// END QUICKENV-BEFORE
+some output 2
+// BEGIN QUICKENV-AFTER
+hello=world
+bogus=wogus
+2
+more=keys
+// END QUICKENV-AFTER
+some output 3
+"#;
+
+    let mut output = Vec::new();
+    let (old_env, new_env) =
+        parse_env_diff(input.as_slice(), |line| output.push(line.to_owned())).unwrap();
+    assert_eq!(
+        old_env,
+        maplit::btreemap![
+            "hello".to_owned() => "world".to_owned(),
+            "bogus".to_owned() => "wogus".to_owned(),
+        ]
+    );
+
+    assert_eq!(
+        new_env,
+        maplit::btreemap![
+            "hello".to_owned() => "world".to_owned(),
+            "bogus".to_owned() => "wogus\n2".to_owned(),
+            "more".to_owned() => "keys".to_owned(),
+        ]
+    );
+
+    assert_eq!(
+        output,
+        vec![
+            "".to_owned(),
+            "some output 1".to_owned(),
+            "some output 2".to_owned(),
+            "some output 3".to_owned()
+        ]
+    );
+}
+
 fn compute_envvars() -> Result<(), Error> {
     let mut ctx = resolve_envrc_context()?;
+    std::fs::create_dir_all(&ctx.env_cache_dir)?;
+    let mut temp_script = tempfile::NamedTempFile::new_in(&ctx.root)?;
+
+    temp_script.write_all(
+        br#"
+echo '// BEGIN QUICKENV-BEFORE'
+env
+echo '// END QUICKENV-BEFORE'
+eval "$(direnv stdlib)"
+"#,
+    )?;
+
+    io::copy(&mut ctx.envrc, &mut temp_script)?;
+
+    temp_script.write_all(
+        br#"
+echo '// BEGIN QUICKENV-AFTER'
+env
+echo '// END QUICKENV-AFTER'
+"#,
+    )?;
 
     let mut cmd = process::Command::new("bash")
-        .stdin(Stdio::piped())
+        .arg(temp_script.path())
+        .stdin(Stdio::inherit())
         .stdout(Stdio::piped())
         .current_dir(ctx.root)
         .spawn()?;
 
-    let mut stdin = cmd.stdin.take().unwrap();
-    let mut stdout_buf = BufReader::new(cmd.stdout.take().unwrap());
-    let old_env = dump_env(&mut stdin, &mut stdout_buf)?;
-    stdin.write_all(b"eval \"$(direnv stdlib)\"\n")?;
+    let stdout_buf = BufReader::new(cmd.stdout.take().unwrap());
+    let (old_env, new_env) = parse_env_diff(stdout_buf, |line| println!("{line}"))?;
 
-    io::copy(&mut ctx.envrc, &mut stdin)?;
+    let status = cmd.wait()?;
 
-    let new_env = dump_env(&mut stdin, &mut stdout_buf)?;
+    if !status.success() {
+        Err(anyhow::anyhow!(".envrc exited with status {status}"))?;
+    }
 
-    std::fs::create_dir_all(ctx.env_cache_dir)?;
     let mut env_cache = BufWriter::new(std::fs::File::create(ctx.env_cache_path)?);
 
     for (key, value) in new_env {
@@ -227,7 +312,7 @@ fn resolve_envrc_context() -> Result<EnvrcContext, Error> {
     })
 }
 
-fn get_envvars() -> Result<Option<BTreeMap<String, String>>, Error> {
+fn get_envvars() -> Result<Option<Env>, Error> {
     let ctx = resolve_envrc_context()?;
     if let Ok(file) = std::fs::File::open(&ctx.env_cache_path) {
         let mut loaded_env_cache = BTreeMap::new();
@@ -320,11 +405,14 @@ fn command_shim(commands: Vec<String>) -> Result<(), Error> {
         }
 
         let old_command_path = which::which(command);
+        let command_path = bin_dir.join(command);
+
         if let Ok(path) = old_command_path {
-            log::warn!("shadowing binary at {}", path.display());
+            if path != command_path {
+                log::warn!("shadowing binary at {}", path.display());
+            }
         }
 
-        let command_path = bin_dir.join(command);
         let was_there = std::fs::remove_file(&command_path).is_ok();
         symlink(&self_binary, &command_path)?;
 
@@ -381,6 +469,12 @@ fn check_for_shim() -> Result<(), Error> {
     let program_name = std::env::args()
         .next()
         .ok_or_else(|| anyhow::anyhow!("failed to determine own program name"))?;
+
+    let program_name = Path::new(&program_name)
+        .file_name()
+        .unwrap()
+        .to_str()
+        .unwrap();
 
     if program_name == "quickenv" {
         log::debug!("own program name is quickenv, so no shim running");
