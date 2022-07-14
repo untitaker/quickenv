@@ -129,8 +129,13 @@ testcase test_script_failure
 
 test_eating_own_tail() {
     quickenv shim bash
-    echo 'bash -c "echo hello world"' > .envrc
+    echo 'bash -c "echo hello world"; export PATH=bogus:$PATH' > .envrc
     QUICKENV_LOG=debug timeout 1 quickenv reload
+    mkdir bogus
+    echo 'echo hello world' > bogus/hello
+    chmod +x bogus/hello
+    quickenv shim hello
+    hello
 }
 
 testcase test_eating_own_tail

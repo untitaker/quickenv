@@ -534,15 +534,6 @@ fn check_for_shim() -> Result<(), Error> {
         new_path.push(entry);
     }
 
-    if !deleted_own_path {
-        return Err(anyhow::anyhow!(
-            "failed to delete own path {:?} from {:?}",
-            own_path.parent(),
-            std::env::var("PATH")
-        )
-        .into());
-    }
-
     std::env::set_var("PATH", new_path);
 
     let path = which::which(&program_basename)
