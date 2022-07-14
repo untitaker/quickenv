@@ -14,7 +14,7 @@ use clap::Parser;
 type Env = BTreeMap<String, String>;
 
 #[derive(Parser, Debug)]
-#[clap(author, version, about, long_about = None)]
+#[clap(version, about, long_about = None)]
 struct Args {
     #[clap(subcommand)]
     subcommand: Command,
@@ -22,8 +22,7 @@ struct Args {
 
 #[derive(Parser, Debug)]
 enum Command {
-    /// Execute .envrc in the current or parent directory, and store the resulting environment
-    /// variables.
+    /// Execute .envrc in the current or parent directory, and cache the new variables.
     Reload,
     /// Dump out cached environment variables.
     ///
