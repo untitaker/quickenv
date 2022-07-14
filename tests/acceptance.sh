@@ -10,6 +10,8 @@ export C_RESET="\e[0m"
 cargo build
 cargo_root=$PWD
 
+TESTFILTER=$1
+
 setup() {
     TEMPDIR="$(mktemp -d)"
     cd "$TEMPDIR"
@@ -27,6 +29,10 @@ teardown() {
 }
 
 testcase() {
+    if [ -n "$TESTFILTER" ] && [ "$1" != "$TESTFILTER" ]; then
+        return
+    fi
+
     testfunc="$1"
     echo -n "test $testfunc... "
     setup
@@ -60,7 +66,7 @@ test_basic() {
     ! which hello
     quickenv shim hello
     which hello
-    [ "$(hello)" = "hello world" ]
+    [ "$(QUICKENV_LOG=debug hello)" = "hello world" ]
     quickenv unshim hello
     ! which hello
 
@@ -120,3 +126,11 @@ test_script_failure() {
 }
 
 testcase test_script_failure
+
+test_eating_own_tail() {
+    quickenv shim bash
+    echo 'bash -c "echo hello world"' > .envrc
+    QUICKENV_LOG=debug timeout 1 quickenv reload
+}
+
+testcase test_eating_own_tail

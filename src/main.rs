@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::env::VarError;
+use std::ffi::{OsStr, OsString};
 use std::io::{self, BufRead, BufReader, BufWriter, Write};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::symlink;
@@ -465,29 +466,41 @@ fn command_unshim(commands: Vec<String>) -> Result<(), Error> {
 }
 
 fn check_for_shim() -> Result<(), Error> {
-    let program_name = std::env::args()
+    let mut args_iter = std::env::args_os();
+    let program_name = args_iter
         .next()
         .ok_or_else(|| anyhow::anyhow!("failed to determine own program name"))?;
 
-    let program_name = Path::new(&program_name)
+    let program_basename = Path::new(&program_name)
         .file_name()
         .unwrap()
         .to_str()
         .unwrap();
 
-    if program_name == "quickenv" {
+    log::debug!("argv[0] is {:?}", program_name);
+
+    if program_basename == "quickenv" {
         log::debug!("own program name is quickenv, so no shim running");
         return Ok(());
     }
 
-    log::debug!("attempting to launch shim {}", program_name);
+    log::debug!("attempting to launch shim");
 
     let own_path = which::which(&program_name)?;
+    log::debug!("abspath of self is {}", own_path.display());
+    let own_path_parent = match own_path.parent() {
+        Some(x) => x,
+        None => {
+            return Err(anyhow::anyhow!(
+                "own path has no parent directory: {}",
+                own_path.display()
+            )
+            .into());
+        }
+    };
 
     match get_envvars() {
-        Ok(None) => Err(anyhow::anyhow!(
-            "run 'quickenv reload' first to generate envvars"
-        ))?,
+        Ok(None) => (),
         Ok(Some(envvars)) => {
             for (k, v) in envvars {
                 std::env::set_var(k, v);
@@ -499,15 +512,45 @@ fn check_for_shim() -> Result<(), Error> {
         }
     }
 
-    for path in which::which_all(&program_name)? {
-        if path == own_path {
-            continue;
+    let mut new_path = OsString::new();
+
+    let mut deleted_own_path = false;
+
+    for entry in std::env::split_paths(&std::env::var("PATH")?) {
+        if !deleted_own_path {
+            if own_path_parent == entry
+                || std::fs::canonicalize(&entry).map_or(false, |x| x == own_path_parent)
+            {
+                log::debug!("removing own entry from PATH: {}", entry.display());
+                deleted_own_path = true;
+                continue;
+            }
         }
 
-        log::debug!("execvp {}", path.display());
+        if !new_path.is_empty() {
+            new_path.push(OsStr::new(":"));
+        }
 
-        Err(exec::execvp(path, std::env::args()))?
+        new_path.push(entry);
     }
 
-    Err(anyhow::anyhow!("failed to find {program_name} on path").into())
+    if !deleted_own_path {
+        return Err(anyhow::anyhow!(
+            "failed to delete own path {:?} from {:?}",
+            own_path.parent(),
+            std::env::var("PATH")
+        )
+        .into());
+    }
+
+    std::env::set_var("PATH", new_path);
+
+    let path = which::which(&program_basename)
+        .map_err(|_| anyhow::anyhow!("failed to find {program_basename} on path"))?;
+    log::debug!("execvp {}", path.display());
+
+    let mut args = vec![path.into_os_string()];
+    args.extend(args_iter);
+
+    return Err(exec::execvp(&args[0], &args).into());
 }
