@@ -54,7 +54,7 @@ quickenv shim git
 
 # Actually activate the virtualenv in your current shell. `quickenv vars`
 # prints all the extra environment variables with which each shimmed binary runs.
-eval $(quickenv vars)
+eval "$(quickenv vars)"
 
 # Or shim 'bash', so that when you open a subshell, the virtualenv is activated.
 quickenv shim bash
