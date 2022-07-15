@@ -33,9 +33,10 @@ it loads environment variables is fundamentally different.
 version management for nodejs by also providing "shim" binaries for the most
 common commands (`yarn`, `npm`, `node`).
 
-**Work in progress, might eat your data**
 
 ## Installation
+
+**quickenv is work in progress and most likely contains bugs. that said, I use it daily at work**
 
 * `quickenv` currently assumes `direnv` is in your path, in order to load
 its "standard library".
