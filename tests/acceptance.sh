@@ -139,3 +139,18 @@ test_eating_own_tail() {
 }
 
 testcase test_eating_own_tail
+
+test_eating_own_tail2() {
+    quickenv shim bash
+    echo 'echo the value is $MYVALUE' > .envrc
+    echo 'bash -c "echo the value is $MYVALUE"' > .envrc
+    echo 'export MYVALUE=canary' >> .envrc
+    output="$(quickenv reload)"
+    ! echo "$output" | grep canary
+    # Assert that during reloading, we're not shimming bash and accidentally
+    # sourcing the old envvar values
+    output="$(quickenv reload)"
+    ! echo "$output" | grep canary
+}
+
+testcase test_eating_own_tail2

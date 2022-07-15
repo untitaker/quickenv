@@ -251,6 +251,7 @@ echo '// END QUICKENV-AFTER'
 
     let mut cmd = process::Command::new("bash")
         .arg(temp_script.path())
+        .env("QUICKENV_NO_SHIM", "1")
         .stdin(Stdio::inherit())
         .stdout(Stdio::piped())
         .current_dir(ctx.root)
@@ -499,16 +500,18 @@ fn check_for_shim() -> Result<(), Error> {
         }
     };
 
-    match get_envvars() {
-        Ok(None) => (),
-        Ok(Some(envvars)) => {
-            for (k, v) in envvars {
-                std::env::set_var(k, v);
+    if std::env::var("QUICKENV_NO_SHIM").unwrap_or_default() != "1" {
+        match get_envvars() {
+            Ok(None) => (),
+            Ok(Some(envvars)) => {
+                for (k, v) in envvars {
+                    std::env::set_var(k, v);
+                }
             }
-        }
-        Err(Error::NoEnvrc) => (),
-        Err(e) => {
-            return Err(e);
+            Err(Error::NoEnvrc) => (),
+            Err(e) => {
+                return Err(e);
+            }
         }
     }
 
