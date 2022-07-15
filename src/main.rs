@@ -100,10 +100,10 @@ fn main_inner() -> Result<(), Error> {
 fn get_quickenv_home() -> Result<PathBuf, Error> {
     if let Ok(home) = std::env::var("QUICKENV_HOME") {
         Ok(Path::new(&home).to_owned())
+    } else if let Ok(home) = std::env::var("HOME") {
+        Ok(Path::new(&home).join(".quickenv/"))
     } else {
-        Ok(home::home_dir()
-            .ok_or_else(|| anyhow::anyhow!("failed to find your HOME dir"))?
-            .join(".quickenv/"))
+        Err(anyhow::anyhow!("failed to find your HOME dir").into())
     }
 }
 
@@ -520,14 +520,13 @@ fn check_for_shim() -> Result<(), Error> {
     let mut deleted_own_path = false;
 
     for entry in std::env::split_paths(&std::env::var("PATH")?) {
-        if !deleted_own_path {
-            if own_path_parent == entry
-                || std::fs::canonicalize(&entry).map_or(false, |x| x == own_path_parent)
-            {
-                log::debug!("removing own entry from PATH: {}", entry.display());
-                deleted_own_path = true;
-                continue;
-            }
+        if !deleted_own_path
+            && (own_path_parent == entry
+                || std::fs::canonicalize(&entry).map_or(false, |x| x == own_path_parent))
+        {
+            log::debug!("removing own entry from PATH: {}", entry.display());
+            deleted_own_path = true;
+            continue;
         }
 
         if !new_path.is_empty() {
@@ -546,5 +545,5 @@ fn check_for_shim() -> Result<(), Error> {
     let mut args = vec![path.into_os_string()];
     args.extend(args_iter);
 
-    return Err(exec::execvp(&args[0], &args).into());
+    Err(exec::execvp(&args[0], &args).into())
 }

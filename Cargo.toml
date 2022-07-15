@@ -19,11 +19,11 @@ clap = { version = "3.2.8", features = ["derive"] }
 env_logger = "0.9.0"
 exec = "0.3.1"
 hex = "0.4.3"
-home = "0.5.3"
 log = "0.4.17"
 tempfile = "3.3.0"
 thiserror = "1.0.31"
 which = "4.2.5"
 
 [dev-dependencies]
+insta = "1.15.0"
 maplit = "1.0.2"
