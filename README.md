@@ -1,4 +1,4 @@
-# `quickenv`: An unintrusive replacement for direnv
+# `quickenv`: An unintrusive environment manager
 
 [`direnv`](https://direnv.net/) is a manager for loading/unloading environment
 variables per-project. It achieves this by hooking into your shell and
