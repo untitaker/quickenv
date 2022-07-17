@@ -1,18 +1,18 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::env::VarError;
+
 use std::ffi::{OsStr, OsString};
 use std::io::{self, BufRead, BufReader, BufWriter, Write};
-use std::os::unix::ffi::OsStrExt;
+
 use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
 use std::process::{self, Stdio};
 
 use log::LevelFilter;
 
-use anyhow::Error as BoxError;
+use anyhow::{Context, Error};
 use clap::Parser;
 
-type Env = BTreeMap<String, String>;
+mod core;
 
 #[derive(Parser, Debug)]
 #[clap(version, about, long_about = None)]
@@ -47,32 +47,11 @@ enum Command {
     },
 }
 
-#[derive(thiserror::Error, Debug)]
-enum Error {
-    #[error("failed to find .envrc in current or any parent directory")]
-    NoEnvrc,
-
-    #[error("{0}")]
-    Io(#[from] io::Error),
-
-    #[error("{0}")]
-    Exec(#[from] exec::Error),
-
-    #[error("{0}")]
-    Which(#[from] which::Error),
-
-    #[error("{0}")]
-    Var(#[from] VarError),
-
-    #[error("{0}")]
-    Other(#[from] BoxError),
-}
-
 fn main() {
     match main_inner() {
         Ok(()) => (),
         Err(e) => {
-            log::error!("{}", e);
+            log::error!("{:?}", e);
             std::process::exit(1);
         }
     }
@@ -85,7 +64,7 @@ fn main_inner() -> Result<(), Error> {
         .parse_env("QUICKENV_LOG")
         .init();
 
-    check_for_shim()?;
+    check_for_shim().context("failed to check whether quickenv should run as shim")?;
 
     let args = Args::parse();
 
@@ -94,16 +73,6 @@ fn main_inner() -> Result<(), Error> {
         Command::Vars => command_vars(),
         Command::Shim { commands } => command_shim(commands),
         Command::Unshim { commands } => command_unshim(commands),
-    }
-}
-
-fn get_quickenv_home() -> Result<PathBuf, Error> {
-    if let Ok(home) = std::env::var("QUICKENV_HOME") {
-        Ok(Path::new(&home).to_owned())
-    } else if let Ok(home) = std::env::var("HOME") {
-        Ok(Path::new(&home).join(".quickenv/"))
-    } else {
-        Err(anyhow::anyhow!("failed to find your HOME dir").into())
     }
 }
 
@@ -116,7 +85,7 @@ enum ParseState {
     End,
 }
 
-fn parse_env_line(line: &str, env: &mut Env, prev_var_name: &mut Option<String>) {
+fn parse_env_line(line: &str, env: &mut core::Env, prev_var_name: &mut Option<String>) {
     match line.split_once('=') {
         Some((var_name, value)) => {
             env.insert(var_name.to_owned(), value.to_owned());
@@ -135,7 +104,7 @@ fn parse_env_line(line: &str, env: &mut Env, prev_var_name: &mut Option<String>)
 fn parse_env_diff<R: BufRead>(
     reader: R,
     mut script_output: impl FnMut(&str),
-) -> Result<(Env, Env), Error> {
+) -> Result<(core::Env, core::Env), Error> {
     let mut parse_state = ParseState::PreBefore;
     let mut old_env = BTreeMap::new();
     let mut new_env = BTreeMap::new();
@@ -226,28 +195,53 @@ some output 3
 }
 
 fn compute_envvars() -> Result<(), Error> {
-    let mut ctx = resolve_envrc_context()?;
-    std::fs::create_dir_all(&ctx.env_cache_dir)?;
-    let mut temp_script = tempfile::NamedTempFile::new_in(&ctx.root)?;
+    let mut ctx = crate::core::resolve_envrc_context()?;
+    std::fs::create_dir_all(&ctx.env_cache_dir).with_context(|| {
+        format!(
+            "failed to create cache directory at {}",
+            &ctx.env_cache_dir.display()
+        )
+    })?;
+    let mut temp_script = tempfile::NamedTempFile::new_in(&ctx.root)
+        .with_context(|| format!("failed to create temporary file at {}", ctx.root.display()))?;
 
-    temp_script.write_all(
-        br#"
+    temp_script
+        .write_all(
+            br#"
 echo '// BEGIN QUICKENV-BEFORE'
 env
 echo '// END QUICKENV-BEFORE'
 eval "$(direnv stdlib)"
 "#,
-    )?;
+        )
+        .with_context(|| {
+            format!(
+                "failed to write to temporary file at {}",
+                temp_script.path().display()
+            )
+        })?;
 
-    io::copy(&mut ctx.envrc, &mut temp_script)?;
+    io::copy(&mut ctx.envrc, &mut temp_script).with_context(|| {
+        format!(
+            "failed to write to temporary file at {}",
+            temp_script.path().display()
+        )
+    })?;
 
-    temp_script.write_all(
-        br#"
+    temp_script
+        .write_all(
+            br#"
 echo '// BEGIN QUICKENV-AFTER'
 env
 echo '// END QUICKENV-AFTER'
 "#,
-    )?;
+        )
+        .with_context(|| {
+            format!(
+                "failed to write to temporary file at {}",
+                temp_script.path().display()
+            )
+        })?;
 
     let mut cmd = process::Command::new("bash")
         .arg(temp_script.path())
@@ -255,81 +249,39 @@ echo '// END QUICKENV-AFTER'
         .stdin(Stdio::inherit())
         .stdout(Stdio::piped())
         .current_dir(ctx.root)
-        .spawn()?;
+        .spawn()
+        .context("failed to spawn bash for running envrc")?;
 
     let stdout_buf = BufReader::new(cmd.stdout.take().unwrap());
-    let (old_env, new_env) = parse_env_diff(stdout_buf, |line| println!("{line}"))?;
+    let (old_env, new_env) = parse_env_diff(stdout_buf, |line| println!("{line}"))
+        .context("failed to parse envrc output")?;
 
-    let status = cmd.wait()?;
+    let status = cmd.wait().context("failed to wait for envrc subprocess")?;
 
     if !status.success() {
         Err(anyhow::anyhow!(".envrc exited with status {status}"))?;
     }
 
-    let mut env_cache = BufWriter::new(std::fs::File::create(ctx.env_cache_path)?);
+    let mut env_cache =
+        BufWriter::new(std::fs::File::create(&ctx.env_cache_path).with_context(|| {
+            format!(
+                "failed to create envrc cache at {}",
+                &ctx.env_cache_path.display()
+            )
+        })?);
 
     for (key, value) in new_env {
         if old_env.get(&key) != Some(&value) {
-            writeln!(&mut env_cache, "{key}={value}")?;
+            writeln!(&mut env_cache, "{key}={value}").with_context(|| {
+                format!(
+                    "failed to write to envrc cache at {}",
+                    ctx.env_cache_path.display()
+                )
+            })?;
         }
     }
 
     Ok(())
-}
-
-struct EnvrcContext {
-    envrc: std::fs::File,
-    root: PathBuf,
-    env_cache_path: PathBuf,
-    env_cache_dir: PathBuf,
-}
-
-fn resolve_envrc_context() -> Result<EnvrcContext, Error> {
-    let mut root = std::env::current_dir()?;
-
-    let (envrc_path, envrc) = loop {
-        let path = root.join(".envrc");
-        if let Ok(f) = std::fs::File::open(&path) {
-            log::debug!("loading {}", path.display());
-            break (path, f);
-        }
-
-        if !root.pop() {
-            return Err(Error::NoEnvrc);
-        }
-    };
-
-    let env_cache_dir = get_quickenv_home()?.join("envs/");
-
-    let mut env_hasher = blake3::Hasher::new();
-    env_hasher.update(envrc_path.as_os_str().as_bytes());
-    let env_cache_path = env_cache_dir.join(hex::encode(env_hasher.finalize().as_bytes()));
-
-    Ok(EnvrcContext {
-        root,
-        env_cache_dir,
-        envrc,
-        env_cache_path,
-    })
-}
-
-fn get_envvars() -> Result<Option<Env>, Error> {
-    let ctx = resolve_envrc_context()?;
-    if let Ok(file) = std::fs::File::open(&ctx.env_cache_path) {
-        let mut loaded_env_cache = BTreeMap::new();
-        let reader = BufReader::new(file);
-
-        for line in reader.lines() {
-            let line = line?;
-            let line = line.trim_end_matches('\n');
-            let (var_name, value) = line.split_once('=').unwrap_or((line, ""));
-            loaded_env_cache.insert(var_name.to_owned(), value.to_owned());
-        }
-
-        return Ok(Some(loaded_env_cache));
-    }
-
-    Ok(None)
 }
 
 fn get_new_paths(
@@ -338,7 +290,8 @@ fn get_new_paths(
 ) -> Result<BTreeSet<PathBuf>, Error> {
     let own_path = old_path_envvar
         .map(|x| Ok(x.to_owned()))
-        .unwrap_or_else(|| std::env::var("PATH"))?;
+        .unwrap_or_else(|| std::env::var("PATH"))
+        .context("failed to read PATH")?;
     let current_paths = std::env::split_paths(&own_path)
         .map(|x| std::fs::canonicalize(&x).unwrap_or(x))
         .collect::<BTreeSet<PathBuf>>();
@@ -355,13 +308,13 @@ fn get_new_paths(
 }
 
 fn command_reload() -> Result<(), Error> {
-    let old_envvars = get_envvars()?;
+    let old_envvars = crate::core::get_envvars()?;
     let old_path_envvar = old_envvars
         .as_ref()
         .and_then(|envvars| envvars.get("PATH"))
         .map(String::as_str);
     compute_envvars()?;
-    let new_envvars = get_envvars()?.expect("somehow didn't end up writing envvars");
+    let new_envvars = crate::core::get_envvars()?.expect("somehow didn't end up writing envvars");
     let new_path_envvar = new_envvars.get("PATH").map(String::as_str);
 
     let paths = get_new_paths(old_path_envvar, new_path_envvar)?;
@@ -377,7 +330,7 @@ fn command_reload() -> Result<(), Error> {
 }
 
 fn command_vars() -> Result<(), Error> {
-    if let Some(envvars) = get_envvars()? {
+    if let Some(envvars) = core::get_envvars()? {
         for (k, v) in envvars {
             println!("{k}={v}");
         }
@@ -391,7 +344,7 @@ fn command_vars() -> Result<(), Error> {
 }
 
 fn command_shim(commands: Vec<String>) -> Result<(), Error> {
-    let quickenv_dir = get_quickenv_home()?;
+    let quickenv_dir = crate::core::get_quickenv_home()?;
     let bin_dir = quickenv_dir.join("bin/");
     std::fs::create_dir_all(&bin_dir)?;
 
@@ -415,13 +368,20 @@ fn command_shim(commands: Vec<String>) -> Result<(), Error> {
         }
 
         let was_there = std::fs::remove_file(&command_path).is_ok();
-        symlink(&self_binary, &command_path)?;
+        symlink(&self_binary, &command_path).with_context(|| {
+            format!(
+                "failed to symlink {} to {}",
+                self_binary.display(),
+                command_path.display()
+            )
+        })?;
 
         if !was_there {
             changes += 1;
         }
 
-        let effective_command_path = which::which(command)?;
+        let effective_command_path = which::which(command)
+            .with_context(|| format!("failed to find command {} after shimming", command))?;
 
         if effective_command_path != command_path {
             Err(anyhow::anyhow!(
@@ -442,7 +402,7 @@ fn command_shim(commands: Vec<String>) -> Result<(), Error> {
 }
 
 fn command_unshim(commands: Vec<String>) -> Result<(), Error> {
-    let quickenv_dir = get_quickenv_home()?;
+    let quickenv_dir = crate::core::get_quickenv_home()?;
     let bin_dir = quickenv_dir.join("bin/");
     let mut changes = 0;
     for command in &commands {
@@ -487,7 +447,8 @@ fn check_for_shim() -> Result<(), Error> {
 
     log::debug!("attempting to launch shim");
 
-    let own_path = which::which(&program_name)?;
+    let own_path =
+        which::which(&program_name).context("failed to determine path of own program")?;
     log::debug!("abspath of self is {}", own_path.display());
     let own_path_parent = match own_path.parent() {
         Some(x) => x,
@@ -495,22 +456,21 @@ fn check_for_shim() -> Result<(), Error> {
             return Err(anyhow::anyhow!(
                 "own path has no parent directory: {}",
                 own_path.display()
-            )
-            .into());
+            ));
         }
     };
 
     if std::env::var("QUICKENV_NO_SHIM").unwrap_or_default() != "1" {
-        match get_envvars() {
+        match core::get_envvars() {
             Ok(None) => (),
             Ok(Some(envvars)) => {
                 for (k, v) in envvars {
                     std::env::set_var(k, v);
                 }
             }
-            Err(Error::NoEnvrc) => (),
+            Err(core::Error::NoEnvrc) => (),
             Err(e) => {
-                return Err(e);
+                return Err(e).context("failed to get environment variables from .envrc");
             }
         }
     }
@@ -519,7 +479,7 @@ fn check_for_shim() -> Result<(), Error> {
 
     let mut deleted_own_path = false;
 
-    for entry in std::env::split_paths(&std::env::var("PATH")?) {
+    for entry in std::env::split_paths(&std::env::var("PATH").context("failed to read PATH")?) {
         if !deleted_own_path
             && (own_path_parent == entry
                 || std::fs::canonicalize(&entry).map_or(false, |x| x == own_path_parent))
@@ -538,8 +498,8 @@ fn check_for_shim() -> Result<(), Error> {
 
     std::env::set_var("PATH", new_path);
 
-    let path = which::which(&program_basename)
-        .map_err(|_| anyhow::anyhow!("failed to find {program_basename} on path"))?;
+    let path =
+        which::which(&program_basename).context("failed to find {program_basename} on path")?;
     log::debug!("execvp {}", path.display());
 
     let mut args = vec![path.into_os_string()];
