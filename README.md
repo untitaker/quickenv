@@ -48,11 +48,7 @@ yourself.
 * `quickenv` assumes a POSIX environment.
 
 ```bash
-# Install quickenv. Quickenv assumes itself to be installed in
-# '~/.quickenv/bin/'. You can change that using QUICKENV_HOME.
 cargo install quickenv
-mkdir -p ~/.quickenv/bin/
-cp ~/.cargo/bin/quickenv ~/.quickenv/bin/
 
 # Into your bashrc/zshrc. This should be at the front of your PATH, such that
 # quickenv can shim/shadow binaries effectively.

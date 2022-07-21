@@ -348,7 +348,7 @@ fn command_shim(commands: Vec<String>) -> Result<(), Error> {
     let bin_dir = quickenv_dir.join("bin/");
     std::fs::create_dir_all(&bin_dir)?;
 
-    let self_binary = bin_dir.join("quickenv");
+    let self_binary = which::which("quickenv")?;
 
     let mut changes = 0;
 
@@ -380,8 +380,13 @@ fn command_shim(commands: Vec<String>) -> Result<(), Error> {
             changes += 1;
         }
 
-        let effective_command_path = which::which(command)
-            .with_context(|| format!("failed to find command {} after shimming", command))?;
+        let effective_command_path = which::which(command).with_context(|| {
+            format!(
+                "failed to find command {} after shimming. Are you sure that {} is on your PATH?",
+                bin_dir.display(),
+                command
+            )
+        })?;
 
         if effective_command_path != command_path {
             Err(anyhow::anyhow!(
