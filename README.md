@@ -42,8 +42,8 @@ common commands (`yarn`, `npm`, `node`).
 its "standard library".
 
 * `quickenv` also currently does not have pre-built binaries. You need to
-[install Rust](https://rustup.rs/), check out this repository, and install it
-yourself.
+  [install Rust](https://rustup.rs/) and install it using Rust's package
+  manager, Cargo.
 
 * `quickenv` assumes a POSIX environment.
 
