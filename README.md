@@ -48,12 +48,11 @@ yourself.
 * `quickenv` assumes a POSIX environment.
 
 ```bash
-# Install quickenv
-git clone https://github.com/untitaker/quickenv
-cd quickenv/
-cargo build --release
+# Install quickenv. Quickenv assumes itself to be installed in
+# '~/.quickenv/bin/'. You can change that using QUICKENV_HOME.
+cargo install quickenv
 mkdir -p ~/.quickenv/bin/
-cp ./target/release/quickenv ~/.quickenv/bin/
+mv ~/.cargo/bin/quickenv ~/.quickenv/bin/
 
 # Into your bashrc/zshrc. This should be at the front of your PATH, such that
 # quickenv can shim/shadow binaries effectively.
