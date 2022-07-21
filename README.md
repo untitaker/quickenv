@@ -52,7 +52,7 @@ yourself.
 # '~/.quickenv/bin/'. You can change that using QUICKENV_HOME.
 cargo install quickenv
 mkdir -p ~/.quickenv/bin/
-mv ~/.cargo/bin/quickenv ~/.quickenv/bin/
+cp ~/.cargo/bin/quickenv ~/.quickenv/bin/
 
 # Into your bashrc/zshrc. This should be at the front of your PATH, such that
 # quickenv can shim/shadow binaries effectively.
