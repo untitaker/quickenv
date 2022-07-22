@@ -352,11 +352,7 @@ fn get_missing_shims_from_dir(
             None => continue,
         };
 
-        if !quickenv_home
-            .join("bin")
-            .join(filename)
-            .exists()
-        {
+        if !quickenv_home.join("bin").join(filename).exists() {
             rv.push(filename.to_owned());
         }
     }
