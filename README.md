@@ -89,6 +89,9 @@ pytest tests/sentry/
 # missed (such as 'python' or 'pip') would run outside of the virtualenv!
 quickenv shim sentry pytest
 
+# You can also run commands within the current .envrc without shimming them.
+quickenv exec -- pytest
+
 # Your git hooks don't execute in the virtualenv for some reason? Just replace
 # git with a binary that itself loads the virtualenv.
 quickenv shim git
@@ -98,6 +101,9 @@ quickenv shim git
 set -o allexport
 eval "$(quickenv vars)"
 set +o allexport
+
+# Or alternatively, substitute your shell with one where quickenv is loaded
+exec quickenv exec $SHELL
 
 # Or shim 'bash', so that when you open a subshell, the virtualenv is activated.
 quickenv shim bash

@@ -64,6 +64,13 @@ enum Command {
         /// The names of the commands to remove.
         commands: Vec<String>,
     },
+    /// Run a program with .envrc loaded without having to shim it.
+    Exec {
+        #[clap(value_parser)]
+        program_name: OsString,
+        #[clap(value_parser)]
+        args: Vec<OsString>,
+    },
 }
 
 fn main() {
@@ -92,6 +99,7 @@ fn main_inner() -> Result<(), Error> {
         Command::Vars => command_vars(),
         Command::Shim { commands, yes } => command_shim(commands, yes),
         Command::Unshim { commands } => command_unshim(commands),
+        Command::Exec { program_name, args } => command_exec(program_name, args),
     }
 }
 
@@ -513,29 +521,15 @@ fn command_unshim(commands: Vec<String>) -> Result<(), Error> {
     Ok(())
 }
 
-fn check_for_shim() -> Result<(), Error> {
-    let mut args_iter = std::env::args_os();
-    let program_name = args_iter
-        .next()
-        .ok_or_else(|| anyhow::anyhow!("failed to determine own program name"))?;
-
-    let program_basename = Path::new(&program_name)
-        .file_name()
-        .unwrap()
-        .to_str()
-        .unwrap();
-
-    log::debug!("argv[0] is {:?}", program_name);
-
-    if program_basename == "quickenv" {
-        log::debug!("own program name is quickenv, so no shim running");
-        return Ok(());
-    }
-
+fn exec_shimmed_binary(
+    self_program_name: &OsStr,
+    program_name: &OsStr,
+    args: Vec<OsString>,
+) -> Result<(), Error> {
     log::debug!("attempting to launch shim");
 
     let own_path =
-        which::which(&program_name).context("failed to determine path of own program")?;
+        which::which(&self_program_name).context("failed to determine path of own program")?;
     log::debug!("abspath of self is {}", own_path.display());
     let own_path_parent = match own_path.parent() {
         Some(x) => x,
@@ -586,12 +580,49 @@ fn check_for_shim() -> Result<(), Error> {
 
     std::env::set_var("PATH", new_path);
 
+    let program_basename = Path::new(&program_name)
+        .file_name()
+        .unwrap()
+        .to_str()
+        .unwrap();
+
     let path =
         which::which(&program_basename).context("failed to find {program_basename} on path")?;
     log::debug!("execvp {}", path.display());
 
-    let mut args = vec![path.into_os_string()];
-    args.extend(args_iter);
+    let mut full_args = vec![path.clone().into_os_string()];
+    full_args.extend(args);
 
-    Err(exec::execvp(&args[0], &args).into())
+    Err(exec::execvp(&path, &full_args).into())
+}
+
+fn check_for_shim() -> Result<(), Error> {
+    let mut args_iter = std::env::args_os();
+    let program_name = args_iter
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("failed to determine own program name"))?;
+
+    let program_basename = Path::new(&program_name)
+        .file_name()
+        .unwrap()
+        .to_str()
+        .unwrap();
+
+    log::debug!("argv[0] is {:?}", program_name);
+
+    if program_basename == "quickenv" {
+        log::debug!("own program name is quickenv, so no shim running");
+        return Ok(());
+    }
+
+    exec_shimmed_binary(&program_name, &program_name, args_iter.collect())
+}
+
+fn command_exec(program_name: OsString, args: Vec<OsString>) -> Result<(), Error> {
+    let mut args_iter = std::env::args_os();
+    let self_program_name = args_iter
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("failed to determine own program name"))?;
+
+    exec_shimmed_binary(&self_program_name, &program_name, args)
 }
