@@ -70,8 +70,11 @@ cd sentry
 # Re-run this command manually everytime the .envrc changes.
 quickenv reload
 
-# Ensure all commands from the virtualenv are present outside of it. This will
-# create executables in '~/.quickenv/bin/' that dispatch to the right binary.
+# As part of executing the .envrc, a virtualenv has been created at './.venv/'.
+# There are multiple commands available in '.venv/bin/', such as 'pytest' (a test
+# runner), or 'sentry' (the main application).
+
+# 'quickenv shim' makes those commands available in your shell.
 quickenv shim
 
 # These commands will now run with the virtualenv enabled.
