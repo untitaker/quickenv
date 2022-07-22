@@ -24,10 +24,7 @@ it loads environment variables is fundamentally different.
   to initialize `quickenv` per-project using `quickenv reload`, and rerun that
   command everytime the `.envrc` changes.
 * `quickenv` does not even load environment variables into your shell. Instead
-  you tell `quickenv` which binaries should run with those environment
-  variables present (for example `quickenv shim python pytest poetry`), and
-  quickenv will wrap those commands in a custom binary, and put that "shim" on
-  your `PATH`.
+  it creates shim binaries that dispatch to the right executable.
 
 `quickenv` is heavily inspired by [volta](https://volta.sh/) which achieves
 version management for nodejs by also providing "shim" binaries for the most
