@@ -104,6 +104,15 @@ quickenv shim bash
 
 # Or shim 'make', so your Makefile runs in the virtualenv.
 quickenv shim make
+
+# Curious which binary is actually being executed?
+QUICKENV_LOG=debug make
+# [DEBUG quickenv] argv[0] is "make"
+# [DEBUG quickenv] attempting to launch shim
+# [DEBUG quickenv] abspath of self is /home/user/.quickenv/bin/make
+# [DEBUG quickenv] removing own entry from PATH: /home/user/.quickenv/bin
+# [DEBUG quickenv] execvp /usr/bin/make
+# ...
 ```
 
 ## License

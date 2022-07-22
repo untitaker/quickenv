@@ -15,8 +15,17 @@ use clap::Parser;
 
 mod core;
 
+// Disabling colored help because the after_help isn't colored, for consistency
 #[derive(Parser, Debug)]
-#[clap(version, about, long_about = None)]
+#[clap(
+    version,
+    about,
+    disable_colored_help = true,
+    after_help = "ENVIRONMENT VARIABLES:
+    QUICKENV_LOG=debug to enable debug output (in shim commands as well)
+    QUICKENV_LOG=error to silence everything but errors
+"
+)]
 struct Args {
     #[clap(subcommand)]
     subcommand: Command,
