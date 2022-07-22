@@ -1,6 +1,6 @@
 [package]
 name = "quickenv"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["Markus Unterwaditzer <markus-honeypot@unterwaditzer.net>"]
 edition = "2021"
 description = "An unintrusive environment manager"
