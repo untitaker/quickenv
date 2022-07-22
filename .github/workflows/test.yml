@@ -38,6 +38,9 @@ jobs:
           toolchain: stable
           override: true
 
+      - name: Install direnv
+        run: sudo apt-get install -y direnv
+
       - name: Run cargo build
         uses: actions-rs/cargo@v1
         with:
