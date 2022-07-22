@@ -84,20 +84,20 @@ pub fn set_executable(path: impl AsRef<Path>) -> Result<(), Error> {
 }
 
 #[allow(unused_macros)]
-macro_rules! cmd {
-    ($harness:expr, $argv0:ident $($arg:literal)*) => {{
-        let output = Command::new($harness.which(stringify!($argv0))?)
+macro_rules! assert_cmd {
+    ($harness:expr, $argv0:ident $($arg:literal)*, $($insta_args:tt)*) => {{
+        let command = Command::new($harness.which(stringify!($argv0))?)
             .current_dir(&$harness.cwd)
             .envs(&$harness.env)
-            $(.arg($arg))*
-            .output()?;
-        let status = output.status.code().unwrap();
-        let stdout = $harness.scrub_output(&String::from_utf8(output.stdout)?)?;
-        let stderr = $harness.scrub_output(&String::from_utf8(output.stderr)?)?;
-        // more compact debug repr for insta
-        format!("status: {}\nstdout: {}\nstderr: {}", status, stdout, stderr)
+            $(.arg($arg))*;
+
+        insta_cmd::assert_cmd_snapshot!(command, {
+            ".**" => insta::dynamic_redaction(|value, _path| {
+                $harness.scrub_output(value).unwrap()
+            }),
+        }, $($insta_args:tt)*);
     }}
 }
 
 #[allow(unused_imports)]
-pub(crate) use cmd;
+pub(crate) use assert_cmd;
