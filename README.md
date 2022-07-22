@@ -70,38 +70,36 @@ cd sentry
 # Re-run this command manually everytime the .envrc changes.
 quickenv reload
 
-# Tell quickenv to place "shim" binaries for those commands in ~/.quickenv/bin/
+# Ensure all commands from the virtualenv are present outside of it. This will
+# create executables in '~/.quickenv/bin/' that dispatch to the right binary.
+quickenv shim
+
+# Alternatively you can shim commands explicitly. Be careful: In this case, the
+# command 'python' or 'pip' would run outside of the virtualenv!
 quickenv shim sentry pytest
 
-# These commands will now run with the virtualenv enabled
+# Either way, these commands will now run with the virtualenv enabled
 sentry devserver --workers
 pytest tests/sentry/
-
-# Other commands not explicitly shimmed will end up not running in the
-# virtualenv at all. Whoops!
-python
-pip install ...
-
-# Better shim them!
-quickenv shim python pip
 ```
 
 ## Advanced usage
 
 ```bash
-# Your git hooks don't execute in the virtualenv for some reason? Just replace/shadow
+# Your git hooks don't execute in the virtualenv for some reason? Just replace
 # git with a binary that itself loads the virtualenv.
 quickenv shim git
 
 # Actually activate the virtualenv in your current shell. `quickenv vars`
 # prints all the extra environment variables with which each shimmed binary runs.
+set -o allexport
 eval "$(quickenv vars)"
+set +o allexport
 
 # Or shim 'bash', so that when you open a subshell, the virtualenv is activated.
 quickenv shim bash
 
-# Or shim 'make', so your Makefile runs in the virtualenv. This can save you from
-# explicitly enumerating a bunch of commands, if you only ever run them via 'make'.
+# Or shim 'make', so your Makefile runs in the virtualenv.
 quickenv shim make
 ```
 
