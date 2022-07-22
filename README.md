@@ -74,11 +74,7 @@ quickenv reload
 # create executables in '~/.quickenv/bin/' that dispatch to the right binary.
 quickenv shim
 
-# Alternatively you can shim commands explicitly. Be careful: In this case, the
-# command 'python' or 'pip' would run outside of the virtualenv!
-quickenv shim sentry pytest
-
-# Either way, these commands will now run with the virtualenv enabled
+# These commands will now run with the virtualenv enabled.
 sentry devserver --workers
 pytest tests/sentry/
 ```
@@ -86,6 +82,10 @@ pytest tests/sentry/
 ## Advanced usage
 
 ```bash
+# Alternatively you can shim commands explicitly. Be careful: Any command you
+# missed (such as 'python' or 'pip') would run outside of the virtualenv!
+quickenv shim sentry pytest
+
 # Your git hooks don't execute in the virtualenv for some reason? Just replace
 # git with a binary that itself loads the virtualenv.
 quickenv shim git
