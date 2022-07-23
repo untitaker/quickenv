@@ -1,6 +1,11 @@
 # Based on https://github.com/actions-rs/meta/blob/master/recipes/quickstart.md
 
-on: [push, pull_request]
+on:
+  push:
+    branches:
+      - main
+
+  pull_request:
 
 name: Test
 
@@ -37,6 +42,14 @@ jobs:
           profile: minimal
           toolchain: stable
           override: true
+
+      - name: Install direnv
+        run: sudo apt-get install -y direnv
+
+      - name: Run cargo build
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
 
       - name: Run cargo test
         uses: actions-rs/cargo@v1

@@ -24,7 +24,7 @@ pub enum Error {
     CurrentDir(#[source] io::Error),
 }
 
-pub fn resolve_envrc_context() -> Result<EnvrcContext, Error> {
+pub fn resolve_envrc_context(quickenv_home: &Path) -> Result<EnvrcContext, Error> {
     let mut root = std::env::current_dir().map_err(Error::CurrentDir)?;
 
     let (envrc_path, envrc) = loop {
@@ -39,7 +39,7 @@ pub fn resolve_envrc_context() -> Result<EnvrcContext, Error> {
         }
     };
 
-    let env_cache_dir = get_quickenv_home()?.join("envs/");
+    let env_cache_dir = quickenv_home.join("envs/");
 
     let mut env_hasher = blake3::Hasher::new();
     env_hasher.update(envrc_path.as_os_str().as_bytes());
@@ -63,8 +63,8 @@ pub fn get_quickenv_home() -> Result<PathBuf, Error> {
     }
 }
 
-pub fn get_envvars() -> Result<Option<Env>, Error> {
-    let ctx = resolve_envrc_context()?;
+pub fn get_envvars(quickenv_home: &Path) -> Result<Option<Env>, Error> {
+    let ctx = resolve_envrc_context(quickenv_home)?;
     if let Ok(file) = std::fs::File::open(&ctx.env_cache_path) {
         let mut loaded_env_cache = BTreeMap::new();
         let reader = BufReader::new(file);

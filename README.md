@@ -24,10 +24,7 @@ it loads environment variables is fundamentally different.
   to initialize `quickenv` per-project using `quickenv reload`, and rerun that
   command everytime the `.envrc` changes.
 * `quickenv` does not even load environment variables into your shell. Instead
-  you tell `quickenv` which binaries should run with those environment
-  variables present (for example `quickenv shim python pytest poetry`), and
-  quickenv will wrap those commands in a custom binary, and put that "shim" on
-  your `PATH`.
+  it creates shim binaries that dispatch to the right executable.
 
 `quickenv` is heavily inspired by [volta](https://volta.sh/) which achieves
 version management for nodejs by also providing "shim" binaries for the most
@@ -70,39 +67,55 @@ cd sentry
 # Re-run this command manually everytime the .envrc changes.
 quickenv reload
 
-# Tell quickenv to place "shim" binaries for those commands in ~/.quickenv/bin/
-quickenv shim sentry pytest
+# As part of executing the .envrc, a virtualenv has been created at './.venv/'.
+# There are multiple commands available in '.venv/bin/', such as 'pytest' (a test
+# runner), or 'sentry' (the main application).
 
-# These commands will now run with the virtualenv enabled
+# 'quickenv shim' makes those commands available in your shell.
+quickenv shim
+
+# These commands will now run with the virtualenv enabled.
 sentry devserver --workers
 pytest tests/sentry/
-
-# Other commands not explicitly shimmed will end up not running in the
-# virtualenv at all. Whoops!
-python
-pip install ...
-
-# Better shim them!
-quickenv shim python pip
 ```
 
 ## Advanced usage
 
 ```bash
-# Your git hooks don't execute in the virtualenv for some reason? Just replace/shadow
+# Alternatively you can shim commands explicitly. Be careful: Any command you
+# missed (such as 'python' or 'pip') would run outside of the virtualenv!
+quickenv shim sentry pytest
+
+# You can also run commands within the current .envrc without shimming them.
+quickenv exec -- pytest
+
+# Your git hooks don't execute in the virtualenv for some reason? Just replace
 # git with a binary that itself loads the virtualenv.
 quickenv shim git
 
 # Actually activate the virtualenv in your current shell. `quickenv vars`
 # prints all the extra environment variables with which each shimmed binary runs.
+set -o allexport
 eval "$(quickenv vars)"
+set +o allexport
+
+# Or alternatively, substitute your shell with one where your .envrc is loaded
+exec quickenv exec $SHELL
 
 # Or shim 'bash', so that when you open a subshell, the virtualenv is activated.
 quickenv shim bash
 
-# Or shim 'make', so your Makefile runs in the virtualenv. This can save you from
-# explicitly enumerating a bunch of commands, if you only ever run them via 'make'.
+# Or shim 'make', so your Makefile runs in the virtualenv.
 quickenv shim make
+
+# Curious which binary is actually being executed?
+QUICKENV_LOG=debug make
+# [DEBUG quickenv] argv[0] is "make"
+# [DEBUG quickenv] attempting to launch shim
+# [DEBUG quickenv] abspath of self is /home/user/.quickenv/bin/make
+# [DEBUG quickenv] removing own entry from PATH: /home/user/.quickenv/bin
+# [DEBUG quickenv] execvp /usr/bin/make
+# ...
 ```
 
 ## License

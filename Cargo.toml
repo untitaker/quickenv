@@ -1,6 +1,6 @@
 [package]
 name = "quickenv"
-version = "0.2.0"
+version = "0.3.3"
 authors = ["Markus Unterwaditzer <markus-honeypot@unterwaditzer.net>"]
 edition = "2021"
 description = "An unintrusive environment manager"
@@ -21,6 +21,7 @@ clap = { version = "3.2.8", features = ["std", "derive", "color"], default-featu
 env_logger = "0.9.0"
 exec = "0.3.1"
 hex = "0.4.3"
+inquire = "0.2.1"
 log = "0.4.17"
 tempfile = "3.3.0"
 thiserror = "1.0.31"

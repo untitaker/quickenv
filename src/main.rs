@@ -4,6 +4,7 @@ use std::ffi::{OsStr, OsString};
 use std::io::{self, BufRead, BufReader, BufWriter, Write};
 
 use std::os::unix::fs::symlink;
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{self, Stdio};
 
@@ -14,8 +15,17 @@ use clap::Parser;
 
 mod core;
 
+// Disabling colored help because the after_help isn't colored, for consistency
 #[derive(Parser, Debug)]
-#[clap(version, about, long_about = None)]
+#[clap(
+    version,
+    about,
+    disable_colored_help = true,
+    after_help = "ENVIRONMENT VARIABLES:
+    QUICKENV_LOG=debug to enable debug output (in shim commands as well)
+    QUICKENV_LOG=error to silence everything but errors
+"
+)]
 struct Args {
     #[clap(subcommand)]
     subcommand: Command,
@@ -34,9 +44,18 @@ enum Command {
     ///
     /// Executing that binary will run in the context of the nearest .envrc, as if it was activated
     /// by direnv.
+    ///
+    /// If no commands are provided, quickenv will determine which commands the current .envrc
+    /// makes available, ask for confirmation, and create shims for those commands.
+    ///
+    /// If commands are provided, quickenv creates those shims directly without confirmation.
     Shim {
+        /// Disable confirmation prompts when running 'shim' without arguments.
+        #[clap(long)]
+        yes: bool,
+        /// The names of the commands to expose. If missing, quickenv will determine recommended
+        /// commands itself and ask for confirmation.
         #[clap(value_parser)]
-        /// The names of the commands to expose.
         commands: Vec<String>,
     },
     /// Remove a shim binary from ~/.quickenv/bin/.
@@ -44,6 +63,13 @@ enum Command {
         #[clap(value_parser)]
         /// The names of the commands to remove.
         commands: Vec<String>,
+    },
+    /// Run a program with .envrc loaded without having to shim it.
+    Exec {
+        #[clap(value_parser)]
+        program_name: OsString,
+        #[clap(value_parser)]
+        args: Vec<OsString>,
     },
 }
 
@@ -71,8 +97,9 @@ fn main_inner() -> Result<(), Error> {
     match args.subcommand {
         Command::Reload => command_reload(),
         Command::Vars => command_vars(),
-        Command::Shim { commands } => command_shim(commands),
+        Command::Shim { commands, yes } => command_shim(commands, yes),
         Command::Unshim { commands } => command_unshim(commands),
+        Command::Exec { program_name, args } => command_exec(program_name, args),
     }
 }
 
@@ -194,8 +221,8 @@ some output 3
     );
 }
 
-fn compute_envvars() -> Result<(), Error> {
-    let mut ctx = crate::core::resolve_envrc_context()?;
+fn compute_envvars(quickenv_home: &Path) -> Result<(), Error> {
+    let mut ctx = crate::core::resolve_envrc_context(quickenv_home)?;
     std::fs::create_dir_all(&ctx.env_cache_dir).with_context(|| {
         format!(
             "failed to create cache directory at {}",
@@ -284,53 +311,93 @@ echo '// END QUICKENV-AFTER'
     Ok(())
 }
 
-fn get_new_paths(
-    old_path_envvar: Option<&str>,
+fn get_missing_shims(
+    quickenv_home: &Path,
     new_path_envvar: Option<&str>,
-) -> Result<BTreeSet<PathBuf>, Error> {
-    let own_path = old_path_envvar
-        .map(|x| Ok(x.to_owned()))
-        .unwrap_or_else(|| std::env::var("PATH"))
-        .context("failed to read PATH")?;
-    let current_paths = std::env::split_paths(&own_path)
+) -> Result<Vec<String>, Error> {
+    let mut rv = Vec::new();
+    let new_path_envvar = match new_path_envvar {
+        Some(x) => x,
+        None => return Ok(rv),
+    };
+
+    let old_paths = std::env::var("PATH").context("failed to read PATH")?;
+    let old_paths = std::env::split_paths(&old_paths)
         .map(|x| std::fs::canonicalize(&x).unwrap_or(x))
         .collect::<BTreeSet<PathBuf>>();
 
-    if let Some(new_path_envvar) = new_path_envvar {
-        let new_paths = std::env::split_paths(new_path_envvar)
-            .map(|x| std::fs::canonicalize(&x).unwrap_or(x))
-            .filter(|path| !current_paths.contains(path))
-            .collect::<BTreeSet<PathBuf>>();
-        Ok(new_paths)
-    } else {
-        Ok(Default::default())
+    for directory in std::env::split_paths(new_path_envvar) {
+        let directory = std::fs::canonicalize(&directory).unwrap_or(directory);
+        if old_paths.contains(&directory) {
+            continue;
+        }
+
+        match get_missing_shims_from_dir(quickenv_home, &directory, &mut rv) {
+            Ok(()) => (),
+            Err(e) => {
+                log::debug!("skipping over directory {:?}: {:?}", directory, e);
+                continue;
+            }
+        }
     }
+
+    Ok(rv)
+}
+
+fn get_missing_shims_from_dir(
+    quickenv_home: &Path,
+    path: &Path,
+    rv: &mut Vec<String>,
+) -> Result<(), Error> {
+    for entry in std::fs::read_dir(path)? {
+        let entry = entry?;
+        let metadata = entry.metadata()?;
+        if metadata.is_dir() {
+            // directories have the executable bit set, so we should skip them explicitly.
+            continue;
+        }
+        let permissions = metadata.permissions();
+        let is_executable = permissions.mode() & 0o111 != 0;
+        if !is_executable {
+            continue;
+        }
+
+        let entry_path = entry.path();
+
+        let filename = match entry_path.file_name().and_then(|x| x.to_str()) {
+            Some(x) => x,
+            None => continue,
+        };
+
+        if !quickenv_home.join("bin").join(filename).exists() {
+            rv.push(filename.to_owned());
+        }
+    }
+
+    Ok(())
 }
 
 fn command_reload() -> Result<(), Error> {
-    let old_envvars = crate::core::get_envvars()?;
-    let old_path_envvar = old_envvars
-        .as_ref()
-        .and_then(|envvars| envvars.get("PATH"))
-        .map(String::as_str);
-    compute_envvars()?;
-    let new_envvars = crate::core::get_envvars()?.expect("somehow didn't end up writing envvars");
+    let quickenv_dir = crate::core::get_quickenv_home()?;
+    compute_envvars(&quickenv_dir)?;
+    let new_envvars =
+        crate::core::get_envvars(&quickenv_dir)?.expect("somehow didn't end up writing envvars");
     let new_path_envvar = new_envvars.get("PATH").map(String::as_str);
+    let missing_shims = get_missing_shims(&quickenv_dir, new_path_envvar)?;
 
-    let paths = get_new_paths(old_path_envvar, new_path_envvar)?;
-    if !paths.is_empty() {
-        for path in &paths {
-            log::info!("new PATH entry: {}", path.display());
-        }
-
-        log::info!("{} new entries in PATH. use 'quickenv shim <command>' to put a shim binary into your global PATH", paths.len());
+    if !missing_shims.is_empty() {
+        log::info!(
+            "{} unshimmed commands. Use 'quickenv shim' to make them available.",
+            missing_shims.len()
+        )
     }
 
     Ok(())
 }
 
 fn command_vars() -> Result<(), Error> {
-    if let Some(envvars) = core::get_envvars()? {
+    let quickenv_dir = crate::core::get_quickenv_home()?;
+    if let Some(envvars) = core::get_envvars(&quickenv_dir)? {
         for (k, v) in envvars {
             println!("{k}={v}");
         }
@@ -343,9 +410,39 @@ fn command_vars() -> Result<(), Error> {
     }
 }
 
-fn command_shim(commands: Vec<String>) -> Result<(), Error> {
+fn command_shim(mut commands: Vec<String>, yes: bool) -> Result<(), Error> {
     let quickenv_dir = crate::core::get_quickenv_home()?;
     let bin_dir = quickenv_dir.join("bin/");
+
+    if commands.is_empty() {
+        let envvars = crate::core::get_envvars(&quickenv_dir)?
+            .ok_or_else(|| anyhow::anyhow!("run 'quickenv reload' first to generate envvars"))?;
+        let path_envvar = envvars.get("PATH").map(String::as_str);
+        commands = get_missing_shims(&quickenv_dir, path_envvar)?;
+
+        if !yes {
+            log::info!("creating the following shims from new PATH entries:");
+            for command in &commands {
+                log::info!("  {command}");
+            }
+
+            let prompt = format!(
+                "do you want to continue with creating {} new shim binaries in {}?",
+                commands.len(),
+                bin_dir.display()
+            );
+
+            let answer = inquire::Confirm::new(&prompt)
+                .with_default(true)
+                .with_help_message("you will still be able to use those commands outside of your .envrc environment")
+                .prompt()?;
+
+            if !answer {
+                std::process::exit(1);
+            }
+        }
+    }
+
     std::fs::create_dir_all(&bin_dir)?;
 
     let self_binary = which::which("quickenv")?;
@@ -358,14 +455,7 @@ fn command_shim(commands: Vec<String>) -> Result<(), Error> {
             continue;
         }
 
-        let old_command_path = which::which(command);
         let command_path = bin_dir.join(command);
-
-        if let Ok(path) = old_command_path {
-            if path != command_path {
-                log::warn!("shadowing binary at {}", path.display());
-            }
-        }
 
         let was_there = std::fs::remove_file(&command_path).is_ok();
         symlink(&self_binary, &command_path).with_context(|| {
@@ -431,29 +521,15 @@ fn command_unshim(commands: Vec<String>) -> Result<(), Error> {
     Ok(())
 }
 
-fn check_for_shim() -> Result<(), Error> {
-    let mut args_iter = std::env::args_os();
-    let program_name = args_iter
-        .next()
-        .ok_or_else(|| anyhow::anyhow!("failed to determine own program name"))?;
-
-    let program_basename = Path::new(&program_name)
-        .file_name()
-        .unwrap()
-        .to_str()
-        .unwrap();
-
-    log::debug!("argv[0] is {:?}", program_name);
-
-    if program_basename == "quickenv" {
-        log::debug!("own program name is quickenv, so no shim running");
-        return Ok(());
-    }
-
+fn exec_shimmed_binary(
+    self_program_name: &OsStr,
+    program_name: &OsStr,
+    args: Vec<OsString>,
+) -> Result<(), Error> {
     log::debug!("attempting to launch shim");
 
     let own_path =
-        which::which(&program_name).context("failed to determine path of own program")?;
+        which::which(&self_program_name).context("failed to determine path of own program")?;
     log::debug!("abspath of self is {}", own_path.display());
     let own_path_parent = match own_path.parent() {
         Some(x) => x,
@@ -466,7 +542,8 @@ fn check_for_shim() -> Result<(), Error> {
     };
 
     if std::env::var("QUICKENV_NO_SHIM").unwrap_or_default() != "1" {
-        match core::get_envvars() {
+        let quickenv_dir = crate::core::get_quickenv_home()?;
+        match core::get_envvars(&quickenv_dir) {
             Ok(None) => (),
             Ok(Some(envvars)) => {
                 for (k, v) in envvars {
@@ -503,12 +580,49 @@ fn check_for_shim() -> Result<(), Error> {
 
     std::env::set_var("PATH", new_path);
 
+    let program_basename = Path::new(&program_name)
+        .file_name()
+        .unwrap()
+        .to_str()
+        .unwrap();
+
     let path =
         which::which(&program_basename).context("failed to find {program_basename} on path")?;
     log::debug!("execvp {}", path.display());
 
-    let mut args = vec![path.into_os_string()];
-    args.extend(args_iter);
+    let mut full_args = vec![path.clone().into_os_string()];
+    full_args.extend(args);
 
-    Err(exec::execvp(&args[0], &args).into())
+    Err(exec::execvp(&path, &full_args).into())
+}
+
+fn check_for_shim() -> Result<(), Error> {
+    let mut args_iter = std::env::args_os();
+    let program_name = args_iter
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("failed to determine own program name"))?;
+
+    let program_basename = Path::new(&program_name)
+        .file_name()
+        .unwrap()
+        .to_str()
+        .unwrap();
+
+    log::debug!("argv[0] is {:?}", program_name);
+
+    if program_basename == "quickenv" {
+        log::debug!("own program name is quickenv, so no shim running");
+        return Ok(());
+    }
+
+    exec_shimmed_binary(&program_name, &program_name, args_iter.collect())
+}
+
+fn command_exec(program_name: OsString, args: Vec<OsString>) -> Result<(), Error> {
+    let mut args_iter = std::env::args_os();
+    let self_program_name = args_iter
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("failed to determine own program name"))?;
+
+    exec_shimmed_binary(&self_program_name, &program_name, args)
 }

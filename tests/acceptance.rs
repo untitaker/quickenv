@@ -14,12 +14,8 @@ fn test_basic() -> Result<(), Error> {
     assert_cmd!(harness, quickenv "reload",  @r###"
     status: 0
     stdout: 
-    stderr: [INFO  quickenv] new PATH entry: bogus
-    [INFO  quickenv] 1 new entries in PATH. use 'quickenv shim <command>' to put a shim binary into your global PATH
+    stderr: [INFO  quickenv] 1 unshimmed commands. Use 'quickenv shim' to make them available.
     "###);
-    create_dir_all(harness.join("bogus"))?;
-    write(harness.join("bogus/hello"), "#!/bin/sh\necho hello world")?;
-    set_executable(harness.join("bogus/hello"))?;
     harness.which("hello").unwrap_err();
     assert_cmd!(harness, quickenv "shim" "hello",  @r###"
     status: 0
@@ -43,7 +39,7 @@ fn test_basic() -> Result<(), Error> {
     assert_cmd!(harness, quickenv "reload",  @r###"
     status: 0
     stdout: 
-    stderr: 
+    stderr: [INFO  quickenv] 1 unshimmed commands. Use 'quickenv shim' to make them available.
     "###);
     Ok(())
 }
@@ -64,8 +60,7 @@ fn test_shadowed() -> Result<(), Error> {
     assert_cmd!(harness, quickenv "shim" "hello",  @r###"
     status: 1
     stdout: 
-    stderr: [WARN  quickenv] shadowing binary at [scrubbed $HOME]/project/bogus/hello
-    [ERROR quickenv] [scrubbed $HOME]/.quickenv/bin/hello is shadowed by an executable of the same name at [scrubbed $HOME]/project/bogus/hello
+    stderr: [ERROR quickenv] [scrubbed $HOME]/.quickenv/bin/hello is shadowed by an executable of the same name at [scrubbed $HOME]/project/bogus/hello
     "###);
     Ok(())
 }
@@ -76,8 +71,7 @@ fn test_shadowing() -> Result<(), Error> {
     assert_cmd!(harness, quickenv "shim" "true",  @r###"
     status: 0
     stdout: 
-    stderr: [WARN  quickenv] shadowing binary at [scrubbed usr-bin]/true
-    [INFO  quickenv] created 1 new shims in [scrubbed $HOME]/.quickenv/bin/. Use 'quickenv unshim <command>' to remove them again
+    stderr: [INFO  quickenv] created 1 new shims in [scrubbed $HOME]/.quickenv/bin/. Use 'quickenv unshim <command>' to remove them again
     "###);
     Ok(())
 }
@@ -143,8 +137,7 @@ fn test_eating_own_tail() -> Result<(), Error> {
     assert_cmd!(harness, quickenv "shim" "bash",  @r###"
     status: 0
     stdout: 
-    stderr: [WARN  quickenv] shadowing binary at [scrubbed usr-bin]/bash
-    [INFO  quickenv] created 1 new shims in [scrubbed $HOME]/.quickenv/bin/. Use 'quickenv unshim <command>' to remove them again
+    stderr: [INFO  quickenv] created 1 new shims in [scrubbed $HOME]/.quickenv/bin/. Use 'quickenv unshim <command>' to remove them again
     "###);
     write(
         harness.join(".envrc"),
@@ -154,8 +147,7 @@ fn test_eating_own_tail() -> Result<(), Error> {
     status: 0
     stdout: hello world
 
-    stderr: [INFO  quickenv] new PATH entry: bogus
-    [INFO  quickenv] 1 new entries in PATH. use 'quickenv shim <command>' to put a shim binary into your global PATH
+    stderr: 
     "###);
     create_dir_all(harness.join("bogus"))?;
     write(harness.join("bogus/hello"), "#!/bin/sh\necho hello world")?;
@@ -180,8 +172,7 @@ fn test_eating_own_tail2() -> Result<(), Error> {
     assert_cmd!(harness, quickenv "shim" "bash",  @r###"
     status: 0
     stdout: 
-    stderr: [WARN  quickenv] shadowing binary at [scrubbed usr-bin]/bash
-    [INFO  quickenv] created 1 new shims in [scrubbed $HOME]/.quickenv/bin/. Use 'quickenv unshim <command>' to remove them again
+    stderr: [INFO  quickenv] created 1 new shims in [scrubbed $HOME]/.quickenv/bin/. Use 'quickenv unshim <command>' to remove them again
     "###);
     write(
         harness.join(".envrc"),
@@ -198,6 +189,31 @@ fn test_eating_own_tail2() -> Result<(), Error> {
     assert_cmd!(harness, quickenv "reload",  @r###"
     status: 0
     stdout: the value is
+
+    stderr: 
+    "###);
+    Ok(())
+}
+
+#[test]
+fn test_exec() -> Result<(), Error> {
+    let harness = setup()?;
+
+    write(harness.join(".envrc"), "export PATH=bogus:$PATH\n")?;
+    create_dir_all(harness.join("bogus"))?;
+    write(harness.join("bogus/hello"), "#!/bin/sh\necho hello world")?;
+    set_executable(harness.join("bogus/hello"))?;
+
+    assert_snapshot!(cmd!(harness, quickenv "reload"), @r###"
+    status: 0
+    stdout: 
+    stderr: [INFO  quickenv] 1 unshimmed commands. Use 'quickenv shim' to make them available.
+    "###);
+
+    harness.which("hello").unwrap_err();
+    assert_snapshot!(cmd!(harness, quickenv "exec" "hello"), @r###"
+    status: 0
+    stdout: hello world
 
     stderr: 
     "###);
