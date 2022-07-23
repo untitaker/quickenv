@@ -5,22 +5,26 @@ use std::fs::{create_dir_all, set_permissions, Permissions};
 use std::os::unix::fs::symlink;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use anyhow::Error;
 use tempfile::TempDir;
 
+#[derive(Clone)]
 pub struct Harness {
     pub env: BTreeMap<OsString, OsString>,
-    pub home: TempDir,
+    pub home: Arc<TempDir>,
     pub cwd: PathBuf,
 }
 
 impl Harness {
     pub fn insta_settings(&self) -> insta::Settings {
         let mut insta_settings = insta::Settings::clone_current();
-        insta_settings.add_dynamic_redaction("**", |value, _path| {
+        // XXX(insta) Settings have to be static
+        let slf = self.clone();
+        insta_settings.add_dynamic_redaction(".**", move |value, _path| {
             if let Some(s) = value.as_str() {
-                self.scrub_output(s).unwrap().into()
+                slf.scrub_output(s).unwrap().into()
             } else {
                 value
             }
@@ -73,8 +77,8 @@ pub fn setup() -> Result<Harness, Error> {
     create_dir_all(&cwd)?;
     let mut harness = Harness {
         env: BTreeMap::new(),
-        home,
-        cwd
+        home: Arc::new(home),
+        cwd,
     };
     dbg!(&harness.home);
 
@@ -98,13 +102,15 @@ pub fn set_executable(path: impl AsRef<Path>) -> Result<(), Error> {
 #[allow(unused_macros)]
 macro_rules! assert_cmd {
     ($harness:expr, $argv0:ident $($arg:literal)*, $($insta_args:tt)*) => {{
-        let command = Command::new($harness.which(stringify!($argv0))?)
-            .current_dir(&$harness.cwd)
-            .envs(&$harness.env)
-            $(.arg($arg))*;
-
         $harness.insta_settings().bind(|| {
-            insta_cmd::assert_cmd_snapshot!(command, $($insta_args:tt)*);
+            // XXX(insta): cannot use Result here
+            insta_cmd::assert_cmd_snapshot!(
+                Command::new($harness.which(stringify!($argv0)).unwrap())
+                .current_dir(&$harness.cwd)
+                .envs(&$harness.env)
+                $(.arg($arg))*,
+                $($insta_args)*
+            );
         });
     }}
 }
