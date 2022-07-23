@@ -204,14 +204,14 @@ fn test_exec() -> Result<(), Error> {
     write(harness.join("bogus/hello"), "#!/bin/sh\necho hello world")?;
     set_executable(harness.join("bogus/hello"))?;
 
-    assert_snapshot!(cmd!(harness, quickenv "reload"), @r###"
+    assert_cmd!(harness, quickenv "reload", @r###"
     status: 0
     stdout: 
     stderr: [INFO  quickenv] 1 unshimmed commands. Use 'quickenv shim' to make them available.
     "###);
 
     harness.which("hello").unwrap_err();
-    assert_snapshot!(cmd!(harness, quickenv "exec" "hello"), @r###"
+    assert_cmd!(harness, quickenv "exec" "hello", @r###"
     status: 0
     stdout: hello world
 

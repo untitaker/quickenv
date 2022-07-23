@@ -22,12 +22,12 @@ env_logger = "0.9.0"
 exec = "0.3.1"
 hex = "0.4.3"
 inquire = "0.2.1"
+insta = { git = "https://github.com/mitsuhiko/insta", version = "1.16.0", features = ["redactions"] }
 log = "0.4.17"
 tempfile = "3.3.0"
 thiserror = "1.0.31"
 which = "4.2.5"
 
 [dev-dependencies]
-insta = "1.15.0"
 insta-cmd = "0.1.1"
 maplit = "1.0.2"

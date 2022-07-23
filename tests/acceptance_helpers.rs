@@ -16,6 +16,18 @@ pub struct Harness {
 }
 
 impl Harness {
+    pub fn insta_settings(&self) -> insta::Settings {
+        let mut insta_settings = insta::Settings::clone_current();
+        insta_settings.add_dynamic_redaction("**", |value, _path| {
+            if let Some(s) = value.as_str() {
+                self.scrub_output(s).unwrap().into()
+            } else {
+                value
+            }
+        });
+        insta_settings
+    }
+
     pub fn prepend_path(&mut self, path: impl AsRef<OsStr>) {
         let mut new_path = path.as_ref().to_owned();
         new_path.push(":");
@@ -62,7 +74,7 @@ pub fn setup() -> Result<Harness, Error> {
     let mut harness = Harness {
         env: BTreeMap::new(),
         home,
-        cwd,
+        cwd
     };
     dbg!(&harness.home);
 
@@ -91,11 +103,9 @@ macro_rules! assert_cmd {
             .envs(&$harness.env)
             $(.arg($arg))*;
 
-        insta_cmd::assert_cmd_snapshot!(command, {
-            ".**" => insta::dynamic_redaction(|value, _path| {
-                $harness.scrub_output(value).unwrap()
-            }),
-        }, $($insta_args:tt)*);
+        $harness.insta_settings().bind(|| {
+            insta_cmd::assert_cmd_snapshot!(command, $($insta_args:tt)*);
+        });
     }}
 }
 
