@@ -99,7 +99,7 @@ set -o allexport
 eval "$(quickenv vars)"
 set +o allexport
 
-# Or alternatively, substitute your shell with one where quickenv is loaded
+# Or alternatively, substitute your shell with one where your .envrc is loaded
 exec quickenv exec $SHELL
 
 # Or shim 'bash', so that when you open a subshell, the virtualenv is activated.
