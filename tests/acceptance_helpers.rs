@@ -5,6 +5,7 @@ use std::fs::{create_dir_all, set_permissions, Permissions};
 use std::os::unix::fs::symlink;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use anyhow::Error;
 use tempfile::TempDir;
@@ -53,11 +54,30 @@ impl Harness {
     pub fn which(&self, binary_name: impl AsRef<OsStr>) -> which::Result<PathBuf> {
         which::which_in(binary_name, self.var("PATH"), &self.cwd)
     }
+
+    pub fn cmd(&self, program_name: &str, args: Vec<&str>) -> Result<String, Error> {
+        let child = Command::new(self.which(program_name)?)
+            .current_dir(&self.cwd)
+            .envs(&self.env)
+            .args(args)
+            .output()?;
+
+        let stdout = self.scrub_output(&String::from_utf8(child.stdout)?)?;
+        let stderr = self.scrub_output(&String::from_utf8(child.stderr)?)?;
+
+        // more compact debug repr for insta
+        Ok(format!(
+            "status: {}\nstdout: {}\nstderr: {}",
+            child.status.code().unwrap(),
+            stdout,
+            stderr
+        ))
+    }
 }
 
 pub fn setup() -> Result<Harness, Error> {
     let home = tempfile::tempdir()?;
-    let cwd = home.path().join("project/").to_owned();
+    let cwd = home.path().join("project/");
     create_dir_all(&cwd)?;
     let mut harness = Harness {
         env: BTreeMap::new(),
@@ -85,17 +105,10 @@ pub fn set_executable(path: impl AsRef<Path>) -> Result<(), Error> {
 
 #[allow(unused_macros)]
 macro_rules! cmd {
-    ($harness:expr, $argv0:ident $($arg:literal)*) => {{
-        let output = Command::new($harness.which(stringify!($argv0))?)
-            .current_dir(&$harness.cwd)
-            .envs(&$harness.env)
-            $(.arg($arg))*
-            .output()?;
-        let status = output.status.code().unwrap();
-        let stdout = $harness.scrub_output(&String::from_utf8(output.stdout)?)?;
-        let stderr = $harness.scrub_output(&String::from_utf8(output.stderr)?)?;
-        // more compact debug repr for insta
-        format!("status: {}\nstdout: {}\nstderr: {}", status, stdout, stderr)
+    ($harness:expr, $program_name:ident $($arg:literal)*) => {{
+        let program_name = stringify!($program_name);
+        let args = vec![$($arg),*];
+        $harness.cmd(program_name, args)?
     }}
 }
 

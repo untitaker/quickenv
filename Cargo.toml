@@ -18,10 +18,12 @@ blake3 = "1.3.1"
 # Disable clap's suggestions feature, because it sometimes suggests nonsense:
 # https://github.com/clap-rs/clap/discussions/3962
 clap = { version = "3.2.8", features = ["std", "derive", "color"], default-features = false }
+console = "0.15.0"
+ctrlc = "3.2.2"
+dialoguer = { version = "0.10.1", default-features = false }
 env_logger = "0.9.0"
 exec = "0.3.1"
 hex = "0.4.3"
-inquire = "0.2.1"
 log = "0.4.17"
 tempfile = "3.3.0"
 

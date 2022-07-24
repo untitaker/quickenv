@@ -1,4 +1,4 @@
-use term_grid::{Direction, Filling, Grid, GridOptions};
+use term_grid::{Cell, Direction, Filling, Grid, GridOptions};
 
 pub fn print_as_grid<T: AsRef<str>>(strings: &[T]) {
     if print_as_grid_inner(strings).is_none() {
@@ -15,7 +15,10 @@ fn print_as_grid_inner<T: AsRef<str>>(strings: &[T]) -> Option<()> {
     });
 
     for string in strings {
-        grid.add(string.as_ref().into());
+        grid.add(Cell {
+            contents: string.as_ref().into(),
+            width: console::measure_text_width(string.as_ref()),
+        });
     }
 
     let width = term_size::dimensions().map(|(w, _h)| w)?;

@@ -8,13 +8,17 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{self, Stdio};
 
-use log::LevelFilter;
+use log::{Level, LevelFilter};
 
 use anyhow::{Context, Error};
 use clap::Parser;
+use console::style;
 
+mod confirm;
 mod core;
 mod grid;
+
+use crate::core::resolve_envrc_context;
 
 // Disabling colored help because the after_help isn't colored, for consistency
 #[derive(Parser, Debug)]
@@ -52,7 +56,7 @@ enum Command {
     /// If commands are provided, quickenv creates those shims directly without confirmation.
     Shim {
         /// Disable confirmation prompts when running 'shim' without arguments.
-        #[clap(long)]
+        #[clap(long, short)]
         yes: bool,
         /// The names of the commands to expose. If missing, quickenv will determine recommended
         /// commands itself and ask for confirmation.
@@ -86,7 +90,13 @@ fn main() {
 
 fn main_inner() -> Result<(), Error> {
     env_logger::Builder::new()
-        .format_timestamp(None)
+        .format(|buf, record| match record.level() {
+            Level::Info => writeln!(buf, "{}", record.args()),
+            Level::Warn => writeln!(buf, "{}{}", style("WARN: ").yellow(), record.args()),
+            Level::Error => writeln!(buf, "{}{}", style("ERROR: ").red(), record.args()),
+            Level::Debug => writeln!(buf, "DEBUG: {}", record.args()),
+            Level::Trace => writeln!(buf, "TRACE: {}", record.args()),
+        })
         .filter_level(LevelFilter::Info)
         .parse_env("QUICKENV_LOG")
         .init();
@@ -94,6 +104,8 @@ fn main_inner() -> Result<(), Error> {
     check_for_shim().context("failed to check whether quickenv should run as shim")?;
 
     let args = Args::parse();
+
+    crate::confirm::set_ctrlc_handler()?;
 
     match args.subcommand {
         Command::Reload => command_reload(),
@@ -379,17 +391,19 @@ fn get_missing_shims_from_dir(
 }
 
 fn command_reload() -> Result<(), Error> {
-    let quickenv_dir = crate::core::get_quickenv_home()?;
-    compute_envvars(&quickenv_dir)?;
+    let quickenv_home = crate::core::get_quickenv_home()?;
+    compute_envvars(&quickenv_home)?;
+    let ctx = resolve_envrc_context(&quickenv_home)?;
     let new_envvars =
-        crate::core::get_envvars(&quickenv_dir)?.expect("somehow didn't end up writing envvars");
+        crate::core::get_envvars(&ctx)?.expect("somehow didn't end up writing envvars");
     let new_path_envvar = new_envvars.get("PATH").map(String::as_str);
-    let missing_shims = get_missing_shims(&quickenv_dir, new_path_envvar)?;
+    let missing_shims = get_missing_shims(&quickenv_home, new_path_envvar)?;
 
     if !missing_shims.is_empty() {
         log::info!(
-            "{} unshimmed commands. Use 'quickenv shim' to make them available.",
-            missing_shims.len()
+            "{} unshimmed commands. Use {} to make them available.",
+            style(missing_shims.len()).green(),
+            style("'quickenv shim'").magenta(),
         )
     }
 
@@ -397,48 +411,83 @@ fn command_reload() -> Result<(), Error> {
 }
 
 fn command_vars() -> Result<(), Error> {
-    let quickenv_dir = crate::core::get_quickenv_home()?;
-    if let Some(envvars) = core::get_envvars(&quickenv_dir)? {
+    let quickenv_home = crate::core::get_quickenv_home()?;
+    let ctx = resolve_envrc_context(&quickenv_home)?;
+
+    if let Some(envvars) = core::get_envvars(&ctx)? {
         for (k, v) in envvars {
             println!("{k}={v}");
         }
 
         Ok(())
     } else {
-        Err(anyhow::anyhow!(
-            "run 'quickenv reload' first to generate envvars"
-        ))?
+        log::error!(
+            "Run {} first to generate envvars",
+            style("'quickenv reload'").magenta()
+        );
+        std::process::exit(1);
     }
 }
 
 fn command_shim(mut commands: Vec<String>, yes: bool) -> Result<(), Error> {
-    let quickenv_dir = crate::core::get_quickenv_home()?;
-    let bin_dir = quickenv_dir.join("bin/");
+    let quickenv_home = crate::core::get_quickenv_home()?;
+    let bin_dir = quickenv_home.join("bin/");
 
     if commands.is_empty() {
-        let envvars = crate::core::get_envvars(&quickenv_dir)?
-            .ok_or_else(|| anyhow::anyhow!("run 'quickenv reload' first to generate envvars"))?;
+        let ctx = resolve_envrc_context(&quickenv_home)?;
+        let envvars = match crate::core::get_envvars(&ctx)? {
+            Some(x) => x,
+            None => {
+                log::error!(
+                    "Run {} first to generate envvars",
+                    style("'quickenv reload'").magenta()
+                );
+                std::process::exit(1);
+            }
+        };
         let path_envvar = envvars.get("PATH").map(String::as_str);
-        commands = get_missing_shims(&quickenv_dir, path_envvar)?;
+        commands = get_missing_shims(&quickenv_home, path_envvar)?;
 
         if commands.is_empty() {
-            log::info!("created no new shims. use 'quickenv shim <command>' to explicitly shim a missing command.");
+            log::info!(
+                "Created {} new shims. Use {} to explicitly shim a missing command.",
+                style("no").red(),
+                style("'quickenv shim <command>'").magenta(),
+            );
             return Ok(());
         }
 
-        if !yes {
-            grid::print_as_grid(&commands);
-
-            let prompt = format!(
-                "do you want to continue with creating {} new shim binaries in {}?",
-                commands.len(),
-                bin_dir.display()
+        eprintln!(
+            "Found these unshimmed commands in your {}:",
+            style(".envrc").cyan()
+        );
+        eprintln!();
+        grid::print_as_grid(&commands);
+        eprintln!();
+        if commands.len() == 1 {
+            eprintln!(
+                "Quickenv will create this new shim binary in {}.",
+                style(bin_dir.display()).cyan()
             );
+        } else {
+            eprintln!(
+                "Quickenv will create these {} new shim binaries in {}.",
+                style(commands.len()).green(),
+                style(bin_dir.display()).cyan()
+            );
+        }
+        eprintln!(
+            "Inside of {}, those commands will run with {} enabled.",
+            style(ctx.root.display()).cyan(),
+            style(".envrc").cyan()
+        );
+        eprintln!("Outside, they will run normally.");
 
-            let answer = inquire::Confirm::new(&prompt)
-                .with_default(true)
-                .with_help_message("you will still be able to use those commands outside of your .envrc environment")
-                .prompt()?;
+        if !yes {
+            let answer = dialoguer::Confirm::new()
+                .with_prompt(style("Continue?").red().to_string())
+                .default(true)
+                .interact()?;
 
             if !answer {
                 std::process::exit(1);
@@ -482,21 +531,23 @@ fn command_shim(mut commands: Vec<String>, yes: bool) -> Result<(), Error> {
         })?;
 
         if effective_command_path != command_path {
-            Err(anyhow::anyhow!(
+            log::error!(
                 "{} is shadowed by an executable of the same name at {}",
-                command_path.display(),
-                effective_command_path.display(),
-            ))?
+                style(command_path.display()).cyan(),
+                style(effective_command_path.display()).magenta(),
+            );
+            std::process::exit(1);
         }
     }
 
     if changes == 0 {
-        log::info!("created no new shims.");
+        log::info!("created {} new shims.", style("no").red());
     } else {
         log::info!(
-            "created {} new shims in {}. Use 'quickenv unshim <command>' to remove them again",
-            changes,
-            bin_dir.display()
+            "Created {} new shims in {}.\nUse {} to remove them again.",
+            style(changes).green(),
+            style(bin_dir.display()).cyan(),
+            style("'quickenv unshim <command>'").magenta(),
         );
     }
 
@@ -520,9 +571,10 @@ fn command_unshim(commands: Vec<String>) -> Result<(), Error> {
     }
 
     log::info!(
-        "removed {} shims from {}. Use 'quickenv shim <command>' to add them again",
-        changes,
-        bin_dir.display()
+        "Removed {} shims from {}.\nUse {} to add them again",
+        style(changes).green(),
+        style(bin_dir.display()).cyan(),
+        style("'quickenv shim <command>'").magenta(),
     );
 
     Ok(())
@@ -549,8 +601,9 @@ fn exec_shimmed_binary(
     };
 
     if std::env::var("QUICKENV_NO_SHIM").unwrap_or_default() != "1" {
-        let quickenv_dir = crate::core::get_quickenv_home()?;
-        match core::get_envvars(&quickenv_dir) {
+        let quickenv_home = crate::core::get_quickenv_home()?;
+        let ctx = resolve_envrc_context(&quickenv_home)?;
+        match core::get_envvars(&ctx) {
             Ok(None) => (),
             Ok(Some(envvars)) => {
                 for (k, v) in envvars {
