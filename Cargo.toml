@@ -24,6 +24,10 @@ hex = "0.4.3"
 inquire = "0.2.1"
 log = "0.4.17"
 tempfile = "3.3.0"
+
+# bugs in 0.2: https://github.com/ogham/rust-term-grid/pull/14
+term_grid = "0.1.7"
+term_size = "0.3.2"
 thiserror = "1.0.31"
 which = "4.2.5"
 
