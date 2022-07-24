@@ -93,7 +93,7 @@ fn test_shim_self() -> Result<(), Error> {
     status: 0
     stdout: 
     stderr: [WARN  quickenv] not shimming own binary
-    [INFO  quickenv] created 0 new shims in [scrubbed $HOME]/.quickenv/bin/. Use 'quickenv unshim <command>' to remove them again
+    [INFO  quickenv] created no new shims.
     "###);
     assert_snapshot!(cmd!(harness, quickenv "unshim" "quickenv"), @r###"
     status: 0

@@ -421,6 +421,11 @@ fn command_shim(mut commands: Vec<String>, yes: bool) -> Result<(), Error> {
         let path_envvar = envvars.get("PATH").map(String::as_str);
         commands = get_missing_shims(&quickenv_dir, path_envvar)?;
 
+        if commands.is_empty() {
+            log::info!("created no new shims. use 'quickenv shim <command>' to explicitly shim a missing command.");
+            return Ok(())
+        }
+
         if !yes {
             grid::print_as_grid(&commands);
 
@@ -485,11 +490,15 @@ fn command_shim(mut commands: Vec<String>, yes: bool) -> Result<(), Error> {
         }
     }
 
-    log::info!(
-        "created {} new shims in {}. Use 'quickenv unshim <command>' to remove them again",
-        changes,
-        bin_dir.display()
-    );
+    if changes == 0 {
+        log::info!("created no new shims.");
+    } else {
+        log::info!(
+            "created {} new shims in {}. Use 'quickenv unshim <command>' to remove them again",
+            changes,
+            bin_dir.display()
+        );
+    }
 
     Ok(())
 }
