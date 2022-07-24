@@ -14,6 +14,7 @@ use anyhow::{Context, Error};
 use clap::Parser;
 
 mod core;
+mod grid;
 
 // Disabling colored help because the after_help isn't colored, for consistency
 #[derive(Parser, Debug)]
@@ -421,10 +422,7 @@ fn command_shim(mut commands: Vec<String>, yes: bool) -> Result<(), Error> {
         commands = get_missing_shims(&quickenv_dir, path_envvar)?;
 
         if !yes {
-            log::info!("creating the following shims from new PATH entries:");
-            for command in &commands {
-                log::info!("  {command}");
-            }
+            grid::print_as_grid(&commands);
 
             let prompt = format!(
                 "do you want to continue with creating {} new shim binaries in {}?",
