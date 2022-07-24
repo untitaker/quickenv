@@ -258,6 +258,14 @@ fn test_auto_shimming() -> Result<(), Error> {
     Outside, they will run normally.
     Created 1 new shims in [scrubbed $HOME]/.quickenv/bin/.
     Use 'quickenv unshim <command>' to remove them again.
+    Use 'quickenv shim <command>' to run additional commands with .envrc enabled.
+    "###);
+
+    assert_snapshot!(cmd!(harness, quickenv "shim" "-y"), @r###"
+    status: 0
+    stdout: 
+    stderr: created no new shims.
+    Use 'quickenv shim <command>' to run additional commands with .envrc enabled.
     "###);
 
     Ok(())

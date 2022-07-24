@@ -433,7 +433,9 @@ fn command_shim(mut commands: Vec<String>, yes: bool) -> Result<(), Error> {
     let quickenv_home = crate::core::get_quickenv_home()?;
     let bin_dir = quickenv_home.join("bin/");
 
-    if commands.is_empty() {
+    let auto = commands.is_empty();
+
+    if auto {
         let ctx = resolve_envrc_context(&quickenv_home)?;
         let envvars = match crate::core::get_envvars(&ctx)? {
             Some(x) => x,
@@ -448,49 +450,44 @@ fn command_shim(mut commands: Vec<String>, yes: bool) -> Result<(), Error> {
         let path_envvar = envvars.get("PATH").map(String::as_str);
         commands = get_missing_shims(&quickenv_home, path_envvar)?;
 
-        if commands.is_empty() {
-            log::info!(
-                "Created {} new shims. Use {} to explicitly shim a missing command.",
-                style("no").red(),
-                style("'quickenv shim <command>'").magenta(),
-            );
-            return Ok(());
-        }
-
-        eprintln!(
-            "Found these unshimmed commands in your {}:",
-            style(".envrc").cyan()
-        );
-        eprintln!();
-        grid::print_as_grid(&commands);
-        eprintln!();
-        if commands.len() == 1 {
+        if !commands.is_empty() {
             eprintln!(
-                "Quickenv will create this new shim binary in {}.",
-                style(bin_dir.display()).cyan()
+                "Found these unshimmed commands in your {}:",
+                style(".envrc").cyan()
             );
-        } else {
+            eprintln!();
+            grid::print_as_grid(&commands);
+            eprintln!();
+            if commands.len() == 1 {
+                eprintln!(
+                    "Quickenv will create this new shim binary in {}.",
+                    style(bin_dir.display()).cyan()
+                );
+            } else {
+                eprintln!(
+                    "Quickenv will create these {} new shim binaries in {}.",
+                    style(commands.len()).green(),
+                    style(bin_dir.display()).cyan()
+                );
+            }
             eprintln!(
-                "Quickenv will create these {} new shim binaries in {}.",
-                style(commands.len()).green(),
-                style(bin_dir.display()).cyan()
+                "Inside of {}, those commands will run with {} enabled.",
+                style(ctx.root.display()).cyan(),
+                style(".envrc").cyan()
             );
-        }
-        eprintln!(
-            "Inside of {}, those commands will run with {} enabled.",
-            style(ctx.root.display()).cyan(),
-            style(".envrc").cyan()
-        );
-        eprintln!("Outside, they will run normally.");
+            eprintln!("Outside, they will run normally.");
 
-        if !yes {
-            let answer = dialoguer::Confirm::new()
-                .with_prompt(style("Continue?").red().to_string())
-                .default(true)
-                .interact()?;
+            if !yes {
+                let answer = dialoguer::Confirm::new()
+                    .with_prompt(style("Continue?").red().to_string())
+                    .default(true)
+                    .interact()?;
 
-            if !answer {
-                std::process::exit(1);
+                if !answer {
+                    std::process::exit(1);
+                }
+
+                eprintln!();
             }
         }
     }
@@ -544,10 +541,21 @@ fn command_shim(mut commands: Vec<String>, yes: bool) -> Result<(), Error> {
         log::info!("created {} new shims.", style("no").red());
     } else {
         log::info!(
-            "Created {} new shims in {}.\nUse {} to remove them again.",
+            "Created {} new shims in {}.",
             style(changes).green(),
             style(bin_dir.display()).cyan(),
+        );
+        log::info!(
+            "Use {} to remove them again.",
             style("'quickenv unshim <command>'").magenta(),
+        );
+    }
+
+    if auto {
+        log::info!(
+            "Use {} to run additional commands with {} enabled.",
+            style("'quickenv shim <command>'").magenta(),
+            style(".envrc").cyan()
         );
     }
 
