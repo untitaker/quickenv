@@ -423,7 +423,7 @@ fn command_shim(mut commands: Vec<String>, yes: bool) -> Result<(), Error> {
 
         if commands.is_empty() {
             log::info!("created no new shims. use 'quickenv shim <command>' to explicitly shim a missing command.");
-            return Ok(())
+            return Ok(());
         }
 
         if !yes {
