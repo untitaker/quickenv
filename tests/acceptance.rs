@@ -248,14 +248,12 @@ fn test_auto_shimming() -> Result<(), Error> {
 
     assert_snapshot!(cmd!(harness, quickenv "shim" "-y"), @r###"
     status: 0
-    stdout: hello
-
+    stdout: 
     stderr: Found these unshimmed commands in your .envrc:
 
+    hello
 
-    Quickenv will create this new shim binary in [scrubbed $HOME]/.quickenv/bin/.
-    Inside of [scrubbed $HOME]/project, those commands will run with .envrc enabled.
-    Outside, they will run normally.
+    Quickenv will create 1 new shim binaries in [scrubbed $HOME]/.quickenv/bin/.
     Created 1 new shims in [scrubbed $HOME]/.quickenv/bin/.
     Use 'quickenv unshim <command>' to remove them again.
     Use 'quickenv shim <command>' to run additional commands with .envrc enabled.
