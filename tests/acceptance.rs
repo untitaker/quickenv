@@ -65,7 +65,7 @@ fn test_shadowed() -> Result<(), Error> {
     assert_snapshot!(cmd!(harness, quickenv "shim" "hello"), @r###"
     status: 1
     stdout: 
-    stderr: ERROR: [scrubbed $HOME]/.quickenv/bin/hello is shadowed by an executable of the same name at [scrubbed $HOME]/project/bogus/hello
+    stderr: [ERROR quickenv] [scrubbed $HOME]/.quickenv/bin/hello is shadowed by an executable of the same name at [scrubbed $HOME]/project/bogus/hello
     "###);
     Ok(())
 }
@@ -88,20 +88,20 @@ fn test_shim_self() -> Result<(), Error> {
     assert_snapshot!(cmd!(harness, quickenv "unshim" "quickenv"), @r###"
     status: 0
     stdout: 
-    stderr: WARN: not unshimming own binary
+    stderr: [WARN quickenv] not unshimming own binary
     Removed 0 shims from [scrubbed $HOME]/.quickenv/bin/.
     Use 'quickenv shim <command>' to add them again
     "###);
     assert_snapshot!(cmd!(harness, quickenv "shim" "quickenv"), @r###"
     status: 0
     stdout: 
-    stderr: WARN: not shimming own binary
+    stderr: [WARN quickenv] not shimming own binary
     created no new shims.
     "###);
     assert_snapshot!(cmd!(harness, quickenv "unshim" "quickenv"), @r###"
     status: 0
     stdout: 
-    stderr: WARN: not unshimming own binary
+    stderr: [WARN quickenv] not unshimming own binary
     Removed 0 shims from [scrubbed $HOME]/.quickenv/bin/.
     Use 'quickenv shim <command>' to add them again
     "###);
@@ -114,15 +114,15 @@ fn test_verbosity() -> Result<(), Error> {
     assert_snapshot!(cmd!(harness, quickenv "vars"), @r###"
     status: 1
     stdout: 
-    stderr: ERROR: failed to find .envrc in current or any parent directory
+    stderr: [ERROR quickenv] failed to find .envrc in current or any parent directory
     "###);
     harness.set_var("QUICKENV_LOG", "debug");
     assert_snapshot!(cmd!(harness, quickenv "vars"), @r###"
     status: 1
     stdout: 
-    stderr: DEBUG: argv[0] is "[scrubbed $HOME]/.quickenv/bin/quickenv"
-    DEBUG: own program name is quickenv, so no shim running
-    ERROR: failed to find .envrc in current or any parent directory
+    stderr: [DEBUG quickenv] argv[0] is "[scrubbed $HOME]/.quickenv/bin/quickenv"
+    [DEBUG quickenv] own program name is quickenv, so no shim running
+    [ERROR quickenv] failed to find .envrc in current or any parent directory
     "###);
     Ok(())
 }
@@ -134,7 +134,7 @@ fn test_script_failure() -> Result<(), Error> {
     assert_snapshot!(cmd!(harness, quickenv "reload"), @r###"
     status: 1
     stdout: 
-    stderr: ERROR: .envrc exited with status exit status: 1
+    stderr: [ERROR quickenv] .envrc exited with status exit status: 1
     "###);
     Ok(())
 }
@@ -268,5 +268,23 @@ fn test_auto_shimming() -> Result<(), Error> {
     Use 'quickenv shim <command>' to run additional commands with .envrc enabled.
     "###);
 
+    Ok(())
+}
+
+#[test]
+fn test_no_envrc_context() -> Result<(), Error> {
+    let harness = setup()?;
+    assert_snapshot!(cmd!(harness, quickenv "shim" "echo"), @r###"
+    status: 0
+    stdout: 
+    stderr: Created 1 new shims in [scrubbed $HOME]/.quickenv/bin/.
+    Use 'quickenv unshim <command>' to remove them again.
+    "###);
+    assert_snapshot!(cmd!(harness, echo "hello world"), @r###"
+    status: 0
+    stdout: hello world
+
+    stderr: 
+    "###);
     Ok(())
 }

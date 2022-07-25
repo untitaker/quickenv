@@ -92,10 +92,28 @@ fn main_inner() -> Result<(), Error> {
     env_logger::Builder::new()
         .format(|buf, record| match record.level() {
             Level::Info => writeln!(buf, "{}", record.args()),
-            Level::Warn => writeln!(buf, "{}{}", style("WARN: ").yellow(), record.args()),
-            Level::Error => writeln!(buf, "{}{}", style("ERROR: ").red(), record.args()),
-            Level::Debug => writeln!(buf, "DEBUG: {}", record.args()),
-            Level::Trace => writeln!(buf, "TRACE: {}", record.args()),
+            // We're adding "quickenv" to every line here on purpose, because it makes debugging
+            // shims much less confusing, where it's not always clear which piece of software
+            // emitted which line.
+            Level::Warn => writeln!(
+                buf,
+                "[{} quickenv] {}",
+                style("WARN").yellow(),
+                record.args()
+            ),
+            Level::Error => writeln!(buf, "[{} quickenv] {}", style("ERROR").red(), record.args()),
+            Level::Debug => writeln!(
+                buf,
+                "[{} quickenv] {}",
+                style("DEBUG").blue(),
+                record.args()
+            ),
+            Level::Trace => writeln!(
+                buf,
+                "[{} quickenv] {}",
+                style("TRACE").magenta(),
+                record.args()
+            ),
         })
         .filter_level(LevelFilter::Info)
         .parse_env("QUICKENV_LOG")
@@ -610,8 +628,7 @@ fn exec_shimmed_binary(
 
     if std::env::var("QUICKENV_NO_SHIM").unwrap_or_default() != "1" {
         let quickenv_home = crate::core::get_quickenv_home()?;
-        let ctx = resolve_envrc_context(&quickenv_home)?;
-        match core::get_envvars(&ctx) {
+        match resolve_envrc_context(&quickenv_home).and_then(|ctx| core::get_envvars(&ctx)) {
             Ok(None) => (),
             Ok(Some(envvars)) => {
                 for (k, v) in envvars {
