@@ -18,7 +18,7 @@ fn print_as_grid_inner<T: AsRef<str>>(strings: &[T]) -> Option<()> {
         grid.add(string.as_ref().into());
     }
 
-    let width = console::Term::stderr().size_checked().map(|(w, _h)| w)?;
+    let width = console::Term::stderr().size_checked().map(|(_rows, cols)| cols)?;
     let grid = grid.fit_into_width(width.into())?;
 
     eprint!("{grid}");
