@@ -119,7 +119,7 @@ fn main_inner() -> Result<(), Error> {
         .parse_env("QUICKENV_LOG")
         .init();
 
-    check_for_shim().context("failed to check whether quickenv should run as shim")?;
+    check_for_shim().context("failed to run shimmed command")?;
 
     let args = Args::parse();
 
@@ -671,8 +671,8 @@ fn exec_shimmed_binary(
         .to_str()
         .unwrap();
 
-    let path =
-        which::which(&program_basename).context("failed to find {program_basename} on path")?;
+    let path = which::which(&program_basename)
+        .with_context(|| format!("failed to find {program_basename} on path"))?;
     log::debug!("execvp {}", path.display());
 
     let mut full_args = vec![path.clone().into_os_string()];
