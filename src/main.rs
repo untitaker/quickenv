@@ -644,15 +644,11 @@ fn exec_shimmed_binary(
 
     let mut new_path = OsString::new();
 
-    let mut deleted_own_path = false;
-
     for entry in std::env::split_paths(&std::env::var("PATH").context("failed to read PATH")?) {
-        if !deleted_own_path
-            && (own_path_parent == entry
-                || std::fs::canonicalize(&entry).map_or(false, |x| x == own_path_parent))
+        if own_path_parent == entry
+            || std::fs::canonicalize(&entry).map_or(false, |x| x == own_path_parent)
         {
             log::debug!("removing own entry from PATH: {}", entry.display());
-            deleted_own_path = true;
             continue;
         }
 
