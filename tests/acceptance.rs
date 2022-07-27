@@ -10,12 +10,17 @@ use acceptance_helpers::{assert_cmd, set_executable, setup};
 fn test_basic() -> Result<(), Error> {
     let harness = setup()?;
     write(harness.join(".envrc"), "export PATH=bogus:$PATH\n")?;
+    create_dir_all(harness.join("bogus"))?;
+    write(harness.join("bogus/hello"), "#!/bin/sh\necho hello world")?;
+    set_executable(harness.join("bogus/hello"))?;
+
     assert_cmd!(harness, quickenv "reload",  @r###"
     success: true
     exit_code: 0
     ----- stdout -----
 
     ----- stderr -----
+    1 unshimmed commands. Use 'quickenv shim' to make them available.
     "###);
     harness.which("hello").unwrap_err();
     assert_cmd!(harness, quickenv "shim" "hello",  @r###"
@@ -29,16 +34,12 @@ fn test_basic() -> Result<(), Error> {
     "###);
     harness.which("hello")?;
     assert_cmd!(harness, hello,  @r###"
-    success: false
-    exit_code: 1
+    success: true
+    exit_code: 0
     ----- stdout -----
+    hello world
 
     ----- stderr -----
-    [ERROR quickenv] failed to run shimmed command
-
-    Caused by:
-        0: failed to find hello on path
-        1: cannot find binary path
     "###);
     assert_cmd!(harness, quickenv "unshim" "hello",  @r###"
     success: true
@@ -57,6 +58,7 @@ fn test_basic() -> Result<(), Error> {
     ----- stdout -----
 
     ----- stderr -----
+    1 unshimmed commands. Use 'quickenv shim' to make them available.
     "###);
     Ok(())
 }
