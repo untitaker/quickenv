@@ -85,7 +85,6 @@ pub fn setup() -> Result<Harness, Error> {
         home,
         cwd,
     };
-    dbg!(&harness.home);
 
     create_dir_all(home_path.join(".quickenv/bin"))?;
     symlink(
