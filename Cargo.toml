@@ -33,7 +33,7 @@ thiserror = "1.0.31"
 which = "4.2.5"
 
 [dev-dependencies]
-insta =  { version = "1.17.0", features = ["filters"] }
+insta = { version = "1.17.0", features = ["filters"], default-features = false }
 insta-cmd = "0.2.0"
 maplit = "1.0.2"
-regex = "1.6.0"
+regex = { version = "1.6.0", default-features = false }
