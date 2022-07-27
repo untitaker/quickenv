@@ -24,7 +24,8 @@ fn test_basic() -> Result<(), Error> {
     ----- stdout -----
 
     ----- stderr -----
-    [INFO  quickenv] created 1 new shims in /tmp/.tmpKPvFiw/.quickenv/bin/. Use 'quickenv unshim <command>' to remove them again
+    Created 1 new shims in [scrubbed $HOME]/.quickenv/bin/.
+    Use 'quickenv unshim <command>' to remove them again.
     "###);
     harness.which("hello")?;
     assert_cmd!(harness, hello,  @r###"
@@ -33,11 +34,11 @@ fn test_basic() -> Result<(), Error> {
     ----- stdout -----
 
     ----- stderr -----
-    [ERROR quickenv] failed to check whether quickenv should run as shim
-        
-        Caused by:
-            0: failed to find {program_basename} on path
-            1: cannot find binary path
+    [ERROR quickenv] failed to run shimmed command
+
+    Caused by:
+        0: failed to find hello on path
+        1: cannot find binary path
     "###);
     assert_cmd!(harness, quickenv "unshim" "hello",  @r###"
     success: true
@@ -45,7 +46,8 @@ fn test_basic() -> Result<(), Error> {
     ----- stdout -----
 
     ----- stderr -----
-    [INFO  quickenv] removed 1 shims from /tmp/.tmpKPvFiw/.quickenv/bin/. Use 'quickenv shim <command>' to add them again
+    Removed 1 shims from [scrubbed $HOME]/.quickenv/bin/.
+    Use 'quickenv shim <command>' to add them again
     "###);
     which("hello").unwrap_err();
 
@@ -80,7 +82,7 @@ fn test_shadowed() -> Result<(), Error> {
     ----- stdout -----
 
     ----- stderr -----
-    [ERROR quickenv] /tmp/.tmpD6ovtO/.quickenv/bin/hello is shadowed by an executable of the same name at /tmp/.tmpD6ovtO/project/bogus/hello
+    [ERROR quickenv] [scrubbed $HOME]/.quickenv/bin/hello is shadowed by an executable of the same name at [scrubbed $HOME]/project/bogus/hello
     "###);
     Ok(())
 }
@@ -94,7 +96,8 @@ fn test_shadowing() -> Result<(), Error> {
     ----- stdout -----
 
     ----- stderr -----
-    [INFO  quickenv] created 1 new shims in /tmp/.tmpCv6bOV/.quickenv/bin/. Use 'quickenv unshim <command>' to remove them again
+    Created 1 new shims in [scrubbed $HOME]/.quickenv/bin/.
+    Use 'quickenv unshim <command>' to remove them again.
     "###);
     Ok(())
 }
@@ -108,8 +111,9 @@ fn test_shim_self() -> Result<(), Error> {
     ----- stdout -----
 
     ----- stderr -----
-    [WARN  quickenv] not unshimming own binary
-    [INFO  quickenv] removed 0 shims from /tmp/.tmp5f4tzX/.quickenv/bin/. Use 'quickenv shim <command>' to add them again
+    [WARN quickenv] not unshimming own binary
+    Removed 0 shims from [scrubbed $HOME]/.quickenv/bin/.
+    Use 'quickenv shim <command>' to add them again
     "###);
     assert_cmd!(harness, quickenv "shim" "quickenv",  @r###"
     success: true
@@ -117,8 +121,8 @@ fn test_shim_self() -> Result<(), Error> {
     ----- stdout -----
 
     ----- stderr -----
-    [WARN  quickenv] not shimming own binary
-    [INFO  quickenv] created 0 new shims in /tmp/.tmp5f4tzX/.quickenv/bin/. Use 'quickenv unshim <command>' to remove them again
+    [WARN quickenv] not shimming own binary
+    created no new shims.
     "###);
     assert_cmd!(harness, quickenv "unshim" "quickenv",  @r###"
     success: true
@@ -126,8 +130,9 @@ fn test_shim_self() -> Result<(), Error> {
     ----- stdout -----
 
     ----- stderr -----
-    [WARN  quickenv] not unshimming own binary
-    [INFO  quickenv] removed 0 shims from /tmp/.tmp5f4tzX/.quickenv/bin/. Use 'quickenv shim <command>' to add them again
+    [WARN quickenv] not unshimming own binary
+    Removed 0 shims from [scrubbed $HOME]/.quickenv/bin/.
+    Use 'quickenv shim <command>' to add them again
     "###);
     Ok(())
 }
@@ -150,7 +155,7 @@ fn test_verbosity() -> Result<(), Error> {
     ----- stdout -----
 
     ----- stderr -----
-    [DEBUG quickenv] argv[0] is "/tmp/.tmpI3TwJO/.quickenv/bin/quickenv"
+    [DEBUG quickenv] argv[0] is "[scrubbed $HOME]/.quickenv/bin/quickenv"
     [DEBUG quickenv] own program name is quickenv, so no shim running
     [ERROR quickenv] failed to find .envrc in current or any parent directory
     "###);
@@ -181,7 +186,8 @@ fn test_eating_own_tail() -> Result<(), Error> {
     ----- stdout -----
 
     ----- stderr -----
-    [INFO  quickenv] created 1 new shims in /tmp/.tmpSkO1ZZ/.quickenv/bin/. Use 'quickenv unshim <command>' to remove them again
+    Created 1 new shims in [scrubbed $HOME]/.quickenv/bin/.
+    Use 'quickenv unshim <command>' to remove them again.
     "###);
     write(
         harness.join(".envrc"),
@@ -204,7 +210,8 @@ fn test_eating_own_tail() -> Result<(), Error> {
     ----- stdout -----
 
     ----- stderr -----
-    [INFO  quickenv] created 1 new shims in /tmp/.tmpSkO1ZZ/.quickenv/bin/. Use 'quickenv unshim <command>' to remove them again
+    Created 1 new shims in [scrubbed $HOME]/.quickenv/bin/.
+    Use 'quickenv unshim <command>' to remove them again.
     "###);
     assert_cmd!(harness, hello,  @r###"
     success: true
@@ -226,7 +233,8 @@ fn test_eating_own_tail2() -> Result<(), Error> {
     ----- stdout -----
 
     ----- stderr -----
-    [INFO  quickenv] created 1 new shims in /tmp/.tmpgURCBM/.quickenv/bin/. Use 'quickenv unshim <command>' to remove them again
+    Created 1 new shims in [scrubbed $HOME]/.quickenv/bin/.
+    Use 'quickenv unshim <command>' to remove them again.
     "###);
     write(
         harness.join(".envrc"),
@@ -268,7 +276,7 @@ fn test_exec() -> Result<(), Error> {
     ----- stdout -----
 
     ----- stderr -----
-    [INFO  quickenv] 1 unshimmed commands. Use 'quickenv shim' to make them available.
+    1 unshimmed commands. Use 'quickenv shim' to make them available.
     "###);
 
     harness.which("hello").unwrap_err();
@@ -292,16 +300,22 @@ fn test_auto_shimming() -> Result<(), Error> {
     write(harness.join("bogus/hello"), "#!/bin/sh\necho hello world")?;
     set_executable(harness.join("bogus/hello"))?;
 
-    assert_snapshot!(cmd!(harness, quickenv "reload"), @r###"
-    status: 0
-    stdout: 
-    stderr: 1 unshimmed commands. Use 'quickenv shim' to make them available.
+    assert_cmd!(harness, quickenv "reload", @r###"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+
+    ----- stderr -----
+    1 unshimmed commands. Use 'quickenv shim' to make them available.
     "###);
 
-    assert_snapshot!(cmd!(harness, quickenv "shim" "-y"), @r###"
-    status: 0
-    stdout: 
-    stderr: Found these unshimmed commands in your .envrc:
+    assert_cmd!(harness, quickenv "shim" "-y", @r###"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+
+    ----- stderr -----
+    Found these unshimmed commands in your .envrc:
 
     hello
 
@@ -313,10 +327,13 @@ fn test_auto_shimming() -> Result<(), Error> {
     Use 'quickenv shim <command>' to run additional commands with .envrc enabled.
     "###);
 
-    assert_snapshot!(cmd!(harness, quickenv "shim" "-y"), @r###"
-    status: 0
-    stdout: 
-    stderr: created no new shims.
+    assert_cmd!(harness, quickenv "shim" "-y", @r###"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+
+    ----- stderr -----
+    created no new shims.
     Use 'quickenv shim <command>' to run additional commands with .envrc enabled.
     "###);
 
@@ -326,17 +343,22 @@ fn test_auto_shimming() -> Result<(), Error> {
 #[test]
 fn test_no_envrc_context() -> Result<(), Error> {
     let harness = setup()?;
-    assert_snapshot!(cmd!(harness, quickenv "shim" "echo"), @r###"
-    status: 0
-    stdout: 
-    stderr: Created 1 new shims in [scrubbed $HOME]/.quickenv/bin/.
+    assert_cmd!(harness, quickenv "shim" "echo", @r###"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+
+    ----- stderr -----
+    Created 1 new shims in [scrubbed $HOME]/.quickenv/bin/.
     Use 'quickenv unshim <command>' to remove them again.
     "###);
-    assert_snapshot!(cmd!(harness, echo "hello world"), @r###"
-    status: 0
-    stdout: hello world
+    assert_cmd!(harness, echo "hello world", @r###"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+    hello world
 
-    stderr: 
+    ----- stderr -----
     "###);
     Ok(())
 }
@@ -350,22 +372,30 @@ fn test_eating_own_tail3() -> Result<(), Error> {
     let mut harness = setup()?;
     harness.prepend_path(std::fs::canonicalize(harness.join("../.quickenv/bin")).unwrap());
     write(harness.join(".envrc"), "export PATH=hello:$PATH:")?;
-    assert_snapshot!(cmd!(harness, quickenv "reload"), @r###"
-    status: 0
-    stdout: 
-    stderr: 
+    assert_cmd!(harness, quickenv "reload", @r###"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+
+    ----- stderr -----
     "###);
-    assert_snapshot!(cmd!(harness, quickenv "shim" "hello"), @r###"
-    status: 0
-    stdout: 
-    stderr: Created 1 new shims in [scrubbed $HOME]/.quickenv/bin/.
+    assert_cmd!(harness, quickenv "shim" "hello", @r###"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+
+    ----- stderr -----
+    Created 1 new shims in [scrubbed $HOME]/.quickenv/bin/.
     Use 'quickenv unshim <command>' to remove them again.
     "###);
     harness.set_var("QUICKENV_LOG", "debug");
-    assert_snapshot!(cmd!(harness, hello), @r###"
-    status: 1
-    stdout: 
-    stderr: [DEBUG quickenv] argv[0] is "[scrubbed $HOME]/.quickenv/bin/hello"
+    assert_cmd!(harness, hello, @r###"
+    success: false
+    exit_code: 1
+    ----- stdout -----
+
+    ----- stderr -----
+    [DEBUG quickenv] argv[0] is "[scrubbed $HOME]/.quickenv/bin/hello"
     [DEBUG quickenv] attempting to launch shim
     [DEBUG quickenv] abspath of self is [scrubbed $HOME]/.quickenv/bin/hello
     [DEBUG quickenv] loading [scrubbed $HOME]/project/.envrc

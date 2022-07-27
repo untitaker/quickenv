@@ -10,7 +10,6 @@ use std::sync::Arc;
 use anyhow::Error;
 use tempfile::TempDir;
 
-#[derive(Clone)]
 pub struct Harness {
     pub env: BTreeMap<OsString, OsString>,
     pub home: Arc<TempDir>,
@@ -20,15 +19,9 @@ pub struct Harness {
 impl Harness {
     pub fn insta_settings(&self) -> insta::Settings {
         let mut insta_settings = insta::Settings::clone_current();
-        // XXX(insta) Settings have to be static
-        let slf = self.clone();
-        insta_settings.add_dynamic_redaction(".**", move |value, _path| {
-            if let Some(s) = value.as_str() {
-                slf.scrub_output(s).unwrap().into()
-            } else {
-                value
-            }
-        });
+        insta_settings.add_filter(&regex::escape(self.var("HOME").unwrap().to_str().unwrap()), "[scrubbed $$HOME]");
+        insta_settings.add_filter(&regex::escape(which::which("true").unwrap().parent().unwrap().to_str().unwrap()), "[scrubbed usr-bin]");
+        insta_settings.add_filter(&regex::escape(which::which("bash").unwrap().parent().unwrap().to_str().unwrap()), "[scrubbed usr-bin2]");
         insta_settings
     }
 
@@ -69,25 +62,6 @@ impl Harness {
     pub fn which(&self, binary_name: impl AsRef<OsStr>) -> which::Result<PathBuf> {
         which::which_in(binary_name, self.var("PATH"), &self.cwd)
     }
-
-    pub fn cmd(&self, program_name: &str, args: Vec<&str>) -> Result<String, Error> {
-        let child = Command::new(self.which(program_name)?)
-            .current_dir(&self.cwd)
-            .envs(&self.env)
-            .args(args)
-            .output()?;
-
-        let stdout = self.scrub_output(&String::from_utf8(child.stdout)?)?;
-        let stderr = self.scrub_output(&String::from_utf8(child.stderr)?)?;
-
-        // more compact debug repr for insta
-        Ok(format!(
-            "status: {}\nstdout: {}\nstderr: {}",
-            child.status.code().unwrap(),
-            stdout,
-            stderr
-        ))
-    }
 }
 
 pub fn setup() -> Result<Harness, Error> {
@@ -123,17 +97,17 @@ pub fn set_executable(path: impl AsRef<Path>) -> Result<(), Error> {
 
 #[allow(unused_macros)]
 macro_rules! assert_cmd {
-    ($harness:expr, $argv0:ident $($arg:literal)*, $($insta_args:tt)*) => {{
-        $harness.insta_settings().bind(|| {
-            // XXX(insta): cannot use Result here
-            insta_cmd::assert_cmd_snapshot!(
-                Command::new($harness.which(stringify!($argv0)).unwrap())
-                .current_dir(&$harness.cwd)
-                .envs(&$harness.env)
-                $(.arg($arg))*,
-                $($insta_args)*
-            );
-        });
+    ($harness:expr, $program_name:ident $($arg:literal)*, $($insta_args:tt)*) => {{
+        use std::process::Command;
+
+        let _guard = $harness.insta_settings().bind_to_scope();
+        insta_cmd::assert_cmd_snapshot!(
+            Command::new($harness.which(stringify!($program_name))?)
+            .current_dir(&$harness.cwd)
+            .envs(&$harness.env)
+            $(.arg($arg))*,
+            $($insta_args)*
+        );
     }}
 }
 
