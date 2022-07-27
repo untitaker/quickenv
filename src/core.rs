@@ -63,8 +63,7 @@ pub fn get_quickenv_home() -> Result<PathBuf, Error> {
     }
 }
 
-pub fn get_envvars(quickenv_home: &Path) -> Result<Option<Env>, Error> {
-    let ctx = resolve_envrc_context(quickenv_home)?;
+pub fn get_envvars(ctx: &EnvrcContext) -> Result<Option<Env>, Error> {
     if let Ok(file) = std::fs::File::open(&ctx.env_cache_path) {
         let mut loaded_env_cache = BTreeMap::new();
         let reader = BufReader::new(file);

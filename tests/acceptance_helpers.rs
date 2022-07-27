@@ -50,14 +50,14 @@ impl Harness {
     }
 
     pub fn scrub_output(&self, input: &str) -> Result<String, Error> {
-        let home = self.var("HOME").unwrap();
+        let home = self.var("HOME").unwrap().to_str().unwrap();
         let true_bin = which::which("true")?;
         let bash_bin = which::which("bash")?;
         let usr_bin = true_bin.parent().unwrap().to_str().unwrap();
         let usr_bin2 = bash_bin.parent().unwrap().to_str().unwrap();
 
         Ok(input
-            .replace(&home.to_str().unwrap(), "[scrubbed $HOME]")
+            .replace(&home, "[scrubbed $HOME]")
             .replace(usr_bin, "[scrubbed usr-bin]")
             .replace(usr_bin2, "[scrubbed usr-bin2]"))
     }
@@ -69,11 +69,33 @@ impl Harness {
     pub fn which(&self, binary_name: impl AsRef<OsStr>) -> which::Result<PathBuf> {
         which::which_in(binary_name, self.var("PATH"), &self.cwd)
     }
+
+    pub fn cmd(&self, program_name: &str, args: Vec<&str>) -> Result<String, Error> {
+        let child = Command::new(self.which(program_name)?)
+            .current_dir(&self.cwd)
+            .envs(&self.env)
+            .args(args)
+            .output()?;
+
+        let stdout = self.scrub_output(&String::from_utf8(child.stdout)?)?;
+        let stderr = self.scrub_output(&String::from_utf8(child.stderr)?)?;
+
+        // more compact debug repr for insta
+        Ok(format!(
+            "status: {}\nstdout: {}\nstderr: {}",
+            child.status.code().unwrap(),
+            stdout,
+            stderr
+        ))
+    }
 }
 
 pub fn setup() -> Result<Harness, Error> {
     let home = tempfile::tempdir()?;
-    let cwd = home.path().join("project/").to_owned();
+    // on macos, /tmp is a symlink to /private/..., so sometimes the path reported by tmpdir is not
+    // canonical
+    let home_path = std::fs::canonicalize(home.path()).unwrap();
+    let cwd = home_path.join("project/");
     create_dir_all(&cwd)?;
     let mut harness = Harness {
         env: BTreeMap::new(),
@@ -82,15 +104,15 @@ pub fn setup() -> Result<Harness, Error> {
     };
     dbg!(&harness.home);
 
-    create_dir_all(harness.home.path().join(".quickenv/bin"))?;
+    create_dir_all(home_path.join(".quickenv/bin"))?;
     symlink(
         current_dir()?.join("target/debug/quickenv"),
-        harness.home.path().join(".quickenv/bin/quickenv"),
+        home_path.join(".quickenv/bin/quickenv"),
     )?;
 
-    harness.set_var("HOME", harness.home.path().to_owned());
+    harness.set_var("HOME", &home_path);
     harness.set_var("PATH", var("PATH").unwrap());
-    harness.prepend_path(harness.home.path().join(".quickenv/bin"));
+    harness.prepend_path(home_path.join(".quickenv/bin"));
     Ok(harness)
 }
 

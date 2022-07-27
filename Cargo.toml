@@ -1,6 +1,6 @@
 [package]
 name = "quickenv"
-version = "0.3.3"
+version = "0.3.4"
 authors = ["Markus Unterwaditzer <markus-honeypot@unterwaditzer.net>"]
 edition = "2021"
 description = "An unintrusive environment manager"
@@ -18,13 +18,19 @@ blake3 = "1.3.1"
 # Disable clap's suggestions feature, because it sometimes suggests nonsense:
 # https://github.com/clap-rs/clap/discussions/3962
 clap = { version = "3.2.8", features = ["std", "derive", "color"], default-features = false }
-env_logger = "0.9.0"
+console = { version = "0.15.0", default-features = false }
+ctrlc = "3.2.2"
+dialoguer = { version = "0.10.1", default-features = false }
+env_logger = { version = "0.9.0", default-features = false }
 exec = "0.3.1"
 hex = "0.4.3"
 inquire = "0.2.1"
 insta = { git = "https://github.com/mitsuhiko/insta", version = "1.16.0", features = ["redactions"] }
 log = "0.4.17"
 tempfile = "3.3.0"
+
+# bugs in 0.2: https://github.com/ogham/rust-term-grid/pull/14
+term_grid = "0.1.7"
 thiserror = "1.0.31"
 which = "4.2.5"
 

@@ -1,5 +1,4 @@
 use std::fs::{create_dir_all, write};
-use std::process::Command;
 
 use anyhow::Error;
 use which::which;
@@ -280,6 +279,103 @@ fn test_exec() -> Result<(), Error> {
     hello world
 
     ----- stderr -----
+    "###);
+    Ok(())
+}
+
+#[test]
+fn test_auto_shimming() -> Result<(), Error> {
+    let harness = setup()?;
+
+    write(harness.join(".envrc"), "export PATH=bogus:$PATH\n")?;
+    create_dir_all(harness.join("bogus"))?;
+    write(harness.join("bogus/hello"), "#!/bin/sh\necho hello world")?;
+    set_executable(harness.join("bogus/hello"))?;
+
+    assert_snapshot!(cmd!(harness, quickenv "reload"), @r###"
+    status: 0
+    stdout: 
+    stderr: 1 unshimmed commands. Use 'quickenv shim' to make them available.
+    "###);
+
+    assert_snapshot!(cmd!(harness, quickenv "shim" "-y"), @r###"
+    status: 0
+    stdout: 
+    stderr: Found these unshimmed commands in your .envrc:
+
+    hello
+
+    Quickenv will create this new shim binary in [scrubbed $HOME]/.quickenv/bin/.
+    Inside of [scrubbed $HOME]/project, those commands will run with .envrc enabled.
+    Outside, they will run normally.
+    Created 1 new shims in [scrubbed $HOME]/.quickenv/bin/.
+    Use 'quickenv unshim <command>' to remove them again.
+    Use 'quickenv shim <command>' to run additional commands with .envrc enabled.
+    "###);
+
+    assert_snapshot!(cmd!(harness, quickenv "shim" "-y"), @r###"
+    status: 0
+    stdout: 
+    stderr: created no new shims.
+    Use 'quickenv shim <command>' to run additional commands with .envrc enabled.
+    "###);
+
+    Ok(())
+}
+
+#[test]
+fn test_no_envrc_context() -> Result<(), Error> {
+    let harness = setup()?;
+    assert_snapshot!(cmd!(harness, quickenv "shim" "echo"), @r###"
+    status: 0
+    stdout: 
+    stderr: Created 1 new shims in [scrubbed $HOME]/.quickenv/bin/.
+    Use 'quickenv unshim <command>' to remove them again.
+    "###);
+    assert_snapshot!(cmd!(harness, echo "hello world"), @r###"
+    status: 0
+    stdout: hello world
+
+    stderr: 
+    "###);
+    Ok(())
+}
+
+#[test]
+fn test_eating_own_tail3() -> Result<(), Error> {
+    // regression: we removed our own PATH from the PATH envvar, but:
+    // 1) the path is actually duplicated, so we didn't remove all copies, and we recurse into
+    //    the shim
+    // 2) the shim re-adds the PATH through its envrc cache
+    let mut harness = setup()?;
+    harness.prepend_path(std::fs::canonicalize(harness.join("../.quickenv/bin")).unwrap());
+    write(harness.join(".envrc"), "export PATH=hello:$PATH:")?;
+    assert_snapshot!(cmd!(harness, quickenv "reload"), @r###"
+    status: 0
+    stdout: 
+    stderr: 
+    "###);
+    assert_snapshot!(cmd!(harness, quickenv "shim" "hello"), @r###"
+    status: 0
+    stdout: 
+    stderr: Created 1 new shims in [scrubbed $HOME]/.quickenv/bin/.
+    Use 'quickenv unshim <command>' to remove them again.
+    "###);
+    harness.set_var("QUICKENV_LOG", "debug");
+    assert_snapshot!(cmd!(harness, hello), @r###"
+    status: 1
+    stdout: 
+    stderr: [DEBUG quickenv] argv[0] is "[scrubbed $HOME]/.quickenv/bin/hello"
+    [DEBUG quickenv] attempting to launch shim
+    [DEBUG quickenv] abspath of self is [scrubbed $HOME]/.quickenv/bin/hello
+    [DEBUG quickenv] loading [scrubbed $HOME]/project/.envrc
+    [DEBUG quickenv] removing own entry from PATH: [scrubbed $HOME]/.quickenv/bin
+    [DEBUG quickenv] removing own entry from PATH: [scrubbed $HOME]/.quickenv/bin
+    [ERROR quickenv] failed to run shimmed command
+
+    Caused by:
+        0: failed to find hello on path
+        1: cannot find binary path
     "###);
     Ok(())
 }
