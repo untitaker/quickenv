@@ -19,9 +19,32 @@ pub struct Harness {
 impl Harness {
     pub fn insta_settings(&self) -> insta::Settings {
         let mut insta_settings = insta::Settings::clone_current();
-        insta_settings.add_filter(&regex::escape(self.var("HOME").unwrap().to_str().unwrap()), "[scrubbed $$HOME]");
-        insta_settings.add_filter(&regex::escape(which::which("true").unwrap().parent().unwrap().to_str().unwrap()), "[scrubbed usr-bin]");
-        insta_settings.add_filter(&regex::escape(which::which("bash").unwrap().parent().unwrap().to_str().unwrap()), "[scrubbed usr-bin2]");
+        insta_settings.add_filter(
+            &regex::escape(self.var("HOME").unwrap().to_str().unwrap()),
+            "[scrubbed $$HOME]",
+        );
+        insta_settings.add_filter(
+            &regex::escape(
+                which::which("true")
+                    .unwrap()
+                    .parent()
+                    .unwrap()
+                    .to_str()
+                    .unwrap(),
+            ),
+            "[scrubbed usr-bin]",
+        );
+        insta_settings.add_filter(
+            &regex::escape(
+                which::which("bash")
+                    .unwrap()
+                    .parent()
+                    .unwrap()
+                    .to_str()
+                    .unwrap(),
+            ),
+            "[scrubbed usr-bin2]",
+        );
         insta_settings
     }
 
@@ -40,19 +63,6 @@ impl Harness {
     pub fn set_var(&mut self, key: impl AsRef<OsStr>, value: impl AsRef<OsStr>) {
         self.env
             .insert(key.as_ref().to_owned(), value.as_ref().to_owned());
-    }
-
-    pub fn scrub_output(&self, input: &str) -> Result<String, Error> {
-        let home = self.var("HOME").unwrap().to_str().unwrap();
-        let true_bin = which::which("true")?;
-        let bash_bin = which::which("bash")?;
-        let usr_bin = true_bin.parent().unwrap().to_str().unwrap();
-        let usr_bin2 = bash_bin.parent().unwrap().to_str().unwrap();
-
-        Ok(input
-            .replace(&home, "[scrubbed $HOME]")
-            .replace(usr_bin, "[scrubbed usr-bin]")
-            .replace(usr_bin2, "[scrubbed usr-bin2]"))
     }
 
     pub fn join(&self, path: impl AsRef<Path>) -> PathBuf {
