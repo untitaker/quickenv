@@ -5,14 +5,13 @@ use std::fs::{create_dir_all, set_permissions, Permissions};
 use std::os::unix::fs::symlink;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 use anyhow::Error;
 use tempfile::TempDir;
 
 pub struct Harness {
     pub env: BTreeMap<OsString, OsString>,
-    pub home: Arc<TempDir>,
+    pub home: TempDir,
     pub cwd: PathBuf,
 }
 
@@ -83,7 +82,7 @@ pub fn setup() -> Result<Harness, Error> {
     create_dir_all(&cwd)?;
     let mut harness = Harness {
         env: BTreeMap::new(),
-        home: Arc::new(home),
+        home,
         cwd,
     };
     dbg!(&harness.home);
