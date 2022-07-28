@@ -157,7 +157,7 @@ fn test_verbosity() -> Result<(), Error> {
     ----- stdout -----
 
     ----- stderr -----
-    [DEBUG quickenv] argv[0] is "[scrubbed $HOME]/.quickenv/bin/quickenv"
+    [DEBUG quickenv] argv[0] is "[scrubbed $HOME]/.quickenv/quickenv_bin/quickenv"
     [DEBUG quickenv] own program name is quickenv, so no shim running
     [ERROR quickenv] failed to find .envrc in current or any parent directory
     "###);
@@ -399,7 +399,6 @@ fn test_eating_own_tail3() -> Result<(), Error> {
     ----- stderr -----
     [DEBUG quickenv] argv[0] is "[scrubbed $HOME]/.quickenv/bin/hello"
     [DEBUG quickenv] attempting to launch shim for "[scrubbed $HOME]/.quickenv/bin/hello"
-    [DEBUG quickenv] abspath of self is [scrubbed $HOME]/.quickenv/bin/hello
     [DEBUG quickenv] loading [scrubbed $HOME]/project/.envrc
     [DEBUG quickenv] removing own entry from PATH: [scrubbed $HOME]/.quickenv/bin
     [DEBUG quickenv] removing own entry from PATH: [scrubbed $HOME]/.quickenv/bin

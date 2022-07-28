@@ -621,17 +621,12 @@ fn command_unshim(commands: Vec<String>) -> Result<(), Error> {
     Ok(())
 }
 
-fn exec_shimmed_binary(
-    self_program_name: &OsStr,
-    program_name: &OsStr,
-    args: Vec<OsString>,
-) -> Result<(), Error> {
+fn exec_shimmed_binary(program_name: &OsStr, args: Vec<OsString>) -> Result<(), Error> {
     log::debug!("attempting to launch shim for {:?}", program_name);
 
     let quickenv_home = crate::core::get_quickenv_home()?;
-    let shimmed_binary_result =
-        find_shimmed_binary(&quickenv_home, self_program_name, program_name)
-            .context("failed to find actual binary")?;
+    let shimmed_binary_result = find_shimmed_binary(&quickenv_home, program_name)
+        .context("failed to find actual binary")?;
 
     for (k, v) in shimmed_binary_result.envvars_override {
         log::debug!("export {:?}={:?}", k, v);
@@ -653,22 +648,8 @@ struct ShimmedBinaryResult {
 
 fn find_shimmed_binary(
     quickenv_home: &Path,
-    self_program_name: &OsStr,
     program_name: &OsStr,
 ) -> Result<ShimmedBinaryResult, Error> {
-    let own_path =
-        which::which(&self_program_name).context("failed to determine path of own program")?;
-    log::debug!("abspath of self is {}", own_path.display());
-    let own_path_parent = match own_path.parent() {
-        Some(x) => x,
-        None => {
-            return Err(anyhow::anyhow!(
-                "own path has no parent directory: {}",
-                own_path.display()
-            ));
-        }
-    };
-
     let mut envvars_override = BTreeMap::<OsString, OsString>::new();
 
     if std::env::var("QUICKENV_NO_SHIM").unwrap_or_default() != "1" {
@@ -692,8 +673,8 @@ fn find_shimmed_binary(
     let mut new_path = OsString::new();
 
     for entry in std::env::split_paths(&old_path) {
-        if own_path_parent == entry
-            || std::fs::canonicalize(&entry).map_or(false, |x| x == own_path_parent)
+        if quickenv_home.join("bin") == entry
+            || std::fs::canonicalize(&entry).map_or(false, |x| x == quickenv_home.join("bin"))
         {
             log::debug!("removing own entry from PATH: {}", entry.display());
             continue;
@@ -746,16 +727,11 @@ fn check_for_shim() -> Result<(), Error> {
         return Ok(());
     }
 
-    exec_shimmed_binary(&program_name, &program_name, args_iter.collect())
+    exec_shimmed_binary(&program_name, args_iter.collect())
 }
 
 fn command_exec(program_name: OsString, args: Vec<OsString>) -> Result<(), Error> {
-    let mut args_iter = std::env::args_os();
-    let self_program_name = args_iter
-        .next()
-        .ok_or_else(|| anyhow::anyhow!("failed to determine own program name"))?;
-
-    exec_shimmed_binary(&self_program_name, &program_name, args)
+    exec_shimmed_binary(&program_name, args)
 }
 
 fn command_which(program_name: OsString, pretend_shimmed: bool) -> Result<(), Error> {
@@ -767,13 +743,7 @@ fn command_which(program_name: OsString, pretend_shimmed: bool) -> Result<(), Er
         std::process::exit(1);
     }
 
-    let mut args_iter = std::env::args_os();
-    let self_program_name = args_iter
-        .next()
-        .ok_or_else(|| anyhow::anyhow!("failed to determine own program name"))?;
-
-    let shimmed_binary_result =
-        find_shimmed_binary(&quickenv_home, &self_program_name, &program_name)?;
+    let shimmed_binary_result = find_shimmed_binary(&quickenv_home, &program_name)?;
     println!("{}", shimmed_binary_result.path.display());
     Ok(())
 }

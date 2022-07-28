@@ -87,14 +87,16 @@ pub fn setup() -> Result<Harness, Error> {
     };
 
     create_dir_all(home_path.join(".quickenv/bin"))?;
+    create_dir_all(home_path.join(".quickenv/quickenv_bin"))?;
     symlink(
         current_dir()?.join("target/debug/quickenv"),
-        home_path.join(".quickenv/bin/quickenv"),
+        home_path.join(".quickenv/quickenv_bin/quickenv"),
     )?;
 
     harness.set_var("HOME", &home_path);
     harness.set_var("PATH", var("PATH").unwrap());
     harness.prepend_path(home_path.join(".quickenv/bin"));
+    harness.prepend_path(home_path.join(".quickenv/quickenv_bin"));
     Ok(harness)
 }
 
