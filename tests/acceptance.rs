@@ -398,7 +398,7 @@ fn test_eating_own_tail3() -> Result<(), Error> {
 
     ----- stderr -----
     [DEBUG quickenv] argv[0] is "[scrubbed $HOME]/.quickenv/bin/hello"
-    [DEBUG quickenv] attempting to launch shim
+    [DEBUG quickenv] attempting to launch shim for "[scrubbed $HOME]/.quickenv/bin/hello"
     [DEBUG quickenv] abspath of self is [scrubbed $HOME]/.quickenv/bin/hello
     [DEBUG quickenv] loading [scrubbed $HOME]/project/.envrc
     [DEBUG quickenv] removing own entry from PATH: [scrubbed $HOME]/.quickenv/bin
@@ -406,8 +406,110 @@ fn test_eating_own_tail3() -> Result<(), Error> {
     [ERROR quickenv] failed to run shimmed command
 
     Caused by:
-        0: failed to find hello on path
-        1: cannot find binary path
+        0: failed to find actual binary
+        1: failed to find hello
+        2: cannot find binary path
+    "###);
+    Ok(())
+}
+
+#[test]
+fn test_which() -> Result<(), Error> {
+    let harness = setup()?;
+
+    write(harness.join(".envrc"), "export PATH=bogus:$PATH\n")?;
+    create_dir_all(harness.join("bogus"))?;
+    write(harness.join("bogus/hello"), "#!/bin/sh\necho hello world")?;
+    set_executable(harness.join("bogus/hello"))?;
+
+    assert_cmd!(harness, quickenv "reload", @r###"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+
+    ----- stderr -----
+    1 unshimmed commands. Use 'quickenv shim' to make them available.
+    "###);
+    assert_cmd!(harness, quickenv "which" "hello", @r###"
+    success: false
+    exit_code: 1
+    ----- stdout -----
+
+    ----- stderr -----
+    [ERROR quickenv] cannot find binary path
+    "###);
+    assert_cmd!(harness, quickenv "shim" "hello", @r###"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+
+    ----- stderr -----
+    Created 1 new shims in [scrubbed $HOME]/.quickenv/bin/.
+    Use 'quickenv unshim <command>' to remove them again.
+    "###);
+    assert_cmd!(harness, quickenv "which" "hello", @r###"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+    bogus/hello
+
+    ----- stderr -----
+    "###);
+    Ok(())
+}
+
+#[test]
+fn test_which_pretend_shimmed() -> Result<(), Error> {
+    let harness = setup()?;
+
+    write(harness.join(".envrc"), "export PATH=bogus:$PATH\n")?;
+    create_dir_all(harness.join("bogus"))?;
+
+    assert_cmd!(harness, quickenv "which" "bash", @r###"
+    success: false
+    exit_code: 1
+    ----- stdout -----
+
+    ----- stderr -----
+    [ERROR quickenv] "bash" is not shimmed by quickenv
+    "###);
+
+    assert_cmd!(harness, quickenv "reload", @r###"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+
+    ----- stderr -----
+    "###);
+
+    assert_cmd!(harness, quickenv "which" "bash", @r###"
+    success: false
+    exit_code: 1
+    ----- stdout -----
+
+    ----- stderr -----
+    [ERROR quickenv] "bash" is not shimmed by quickenv
+    "###);
+
+    write(harness.join("bogus/bash"), "#!/bin/sh\necho hello world")?;
+    set_executable(harness.join("bogus/bash"))?;
+
+    assert_cmd!(harness, quickenv "which" "bash", @r###"
+    success: false
+    exit_code: 1
+    ----- stdout -----
+
+    ----- stderr -----
+    [ERROR quickenv] "bash" is not shimmed by quickenv
+    "###);
+
+    assert_cmd!(harness, quickenv "which" "bash" "--pretend-shimmed", @r###"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+    bogus/bash
+
+    ----- stderr -----
     "###);
     Ok(())
 }
