@@ -3,6 +3,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::{OsStr, OsString};
 use std::io::{self, BufRead, BufReader, BufWriter, Write};
 
+use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::symlink;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
@@ -76,6 +77,20 @@ enum Command {
         #[clap(value_parser)]
         args: Vec<OsString>,
     },
+    /// Determine which program quickenv's shim would launch under the hood.
+    ///
+    /// This will error if the shim is not installed. Pass '--pretend-shimmed' to simulate what would
+    /// happen anyway.
+    Which {
+        /// The command name to look up.
+        #[clap(value_parser)]
+        program_name: OsString,
+
+        /// If quickenv does not have a shim under the given program name, this command errors by
+        /// default. This check can be disabled using '--pretend-shimmed'
+        #[clap(long)]
+        pretend_shimmed: bool,
+    },
 }
 
 fn main() {
@@ -131,6 +146,10 @@ fn main_inner() -> Result<(), Error> {
         Command::Shim { commands, yes } => command_shim(commands, yes),
         Command::Unshim { commands } => command_unshim(commands),
         Command::Exec { program_name, args } => command_exec(program_name, args),
+        Command::Which {
+            program_name,
+            pretend_shimmed,
+        } => command_which(program_name, pretend_shimmed),
     }
 }
 
@@ -143,59 +162,47 @@ enum ParseState {
     End,
 }
 
-fn parse_env_line(line: &str, env: &mut core::Env, prev_var_name: &mut Option<String>) {
-    match line.split_once('=') {
-        Some((var_name, value)) => {
-            env.insert(var_name.to_owned(), value.to_owned());
-            *prev_var_name = Some(var_name.to_owned());
-        }
-        None => {
-            let prev_value = env
-                .get_mut(prev_var_name.as_ref().unwrap().as_str())
-                .unwrap();
-            prev_value.push('\n');
-            prev_value.push_str(line);
-        }
-    }
-}
-
 fn parse_env_diff<R: BufRead>(
     reader: R,
-    mut script_output: impl FnMut(&str),
+    mut script_output: impl FnMut(&[u8]) -> Result<(), Error>,
 ) -> Result<(core::Env, core::Env), Error> {
     let mut parse_state = ParseState::PreBefore;
     let mut old_env = BTreeMap::new();
     let mut new_env = BTreeMap::new();
     let mut prev_var_name = None;
 
-    for raw_line in reader.lines() {
-        let raw_line = raw_line?;
-        let line = raw_line.trim_end_matches('\n');
+    for line in reader.split(b'\n') {
+        let raw_line = line?;
+        let mut line = raw_line.as_slice();
+        while let Some(b'\n') = line.last() {
+            line = &line[..line.len()];
+        }
+
         match (parse_state, line) {
-            (ParseState::PreBefore, "// BEGIN QUICKENV-BEFORE") => {
+            (ParseState::PreBefore, b"// BEGIN QUICKENV-BEFORE") => {
                 prev_var_name = None;
                 parse_state = ParseState::InBefore;
             }
-            (ParseState::InBefore, "// END QUICKENV-BEFORE") => {
+            (ParseState::InBefore, b"// END QUICKENV-BEFORE") => {
                 prev_var_name = None;
                 parse_state = ParseState::PreAfter;
             }
-            (ParseState::PreAfter, "// BEGIN QUICKENV-AFTER") => {
+            (ParseState::PreAfter, b"// BEGIN QUICKENV-AFTER") => {
                 prev_var_name = None;
                 parse_state = ParseState::InAfter;
             }
-            (ParseState::InAfter, "// END QUICKENV-AFTER") => {
+            (ParseState::InAfter, b"// END QUICKENV-AFTER") => {
                 prev_var_name = None;
                 parse_state = ParseState::End;
             }
             (ParseState::InBefore, line) => {
-                parse_env_line(line, &mut old_env, &mut prev_var_name);
+                core::parse_env_line(line, &mut old_env, &mut prev_var_name);
             }
             (ParseState::InAfter, line) => {
-                parse_env_line(line, &mut new_env, &mut prev_var_name);
+                core::parse_env_line(line, &mut new_env, &mut prev_var_name);
             }
             (_, _) => {
-                script_output(&raw_line);
+                script_output(&raw_line)?;
             }
         }
     }
@@ -221,33 +228,36 @@ more=keys
 some output 3
 "#;
 
-    let mut output = Vec::new();
-    let (old_env, new_env) =
-        parse_env_diff(input.as_slice(), |line| output.push(line.to_owned())).unwrap();
+    let mut output: Vec<Vec<u8>> = Vec::new();
+    let (old_env, new_env) = parse_env_diff(input.as_slice(), |line| {
+        output.push(line.to_owned());
+        Ok(())
+    })
+    .unwrap();
     assert_eq!(
         old_env,
         maplit::btreemap![
-            "hello".to_owned() => "world".to_owned(),
-            "bogus".to_owned() => "wogus".to_owned(),
+            "hello".into() => "world".into(),
+            "bogus".into() => "wogus".into(),
         ]
     );
 
     assert_eq!(
         new_env,
         maplit::btreemap![
-            "hello".to_owned() => "world".to_owned(),
-            "bogus".to_owned() => "wogus\n2".to_owned(),
-            "more".to_owned() => "keys".to_owned(),
+            "hello".into() => "world".into(),
+            "bogus".into() => "wogus\n2".into(),
+            "more".into() => "keys".into(),
         ]
     );
 
     assert_eq!(
         output,
         vec![
-            "".to_owned(),
-            "some output 1".to_owned(),
-            "some output 2".to_owned(),
-            "some output 3".to_owned()
+            b"".as_slice().to_owned(),
+            b"some output 1".as_slice().to_owned(),
+            b"some output 2".as_slice().to_owned(),
+            b"some output 3".as_slice().to_owned()
         ]
     );
 }
@@ -311,8 +321,12 @@ echo '// END QUICKENV-AFTER'
         .context("failed to spawn bash for running envrc")?;
 
     let stdout_buf = BufReader::new(cmd.stdout.take().unwrap());
-    let (old_env, new_env) = parse_env_diff(stdout_buf, |line| println!("{line}"))
-        .context("failed to parse envrc output")?;
+    let (old_env, new_env) = parse_env_diff(stdout_buf, |line| {
+        io::stdout().write_all(line)?;
+        io::stdout().write_all(b"\n")?;
+        Ok(())
+    })
+    .context("failed to parse envrc output")?;
 
     let status = cmd.wait().context("failed to wait for envrc subprocess")?;
 
@@ -330,12 +344,10 @@ echo '// END QUICKENV-AFTER'
 
     for (key, value) in new_env {
         if old_env.get(&key) != Some(&value) {
-            writeln!(&mut env_cache, "{key}={value}").with_context(|| {
-                format!(
-                    "failed to write to envrc cache at {}",
-                    ctx.env_cache_path.display()
-                )
-            })?;
+            env_cache.write_all(key.as_bytes())?;
+            env_cache.write_all(b"=")?;
+            env_cache.write_all(value.as_bytes())?;
+            env_cache.write_all(b"\n")?;
         }
     }
 
@@ -344,7 +356,7 @@ echo '// END QUICKENV-AFTER'
 
 fn get_missing_shims(
     quickenv_home: &Path,
-    new_path_envvar: Option<&str>,
+    new_path_envvar: Option<&OsStr>,
 ) -> Result<Vec<String>, Error> {
     let mut rv = Vec::new();
     let new_path_envvar = match new_path_envvar {
@@ -414,7 +426,7 @@ fn command_reload() -> Result<(), Error> {
     let ctx = resolve_envrc_context(&quickenv_home)?;
     let new_envvars =
         crate::core::get_envvars(&ctx)?.expect("somehow didn't end up writing envvars");
-    let new_path_envvar = new_envvars.get("PATH").map(String::as_str);
+    let new_path_envvar = new_envvars.get(OsStr::new("PATH")).map(OsString::as_os_str);
     let missing_shims = get_missing_shims(&quickenv_home, new_path_envvar)?;
 
     if !missing_shims.is_empty() {
@@ -434,7 +446,10 @@ fn command_vars() -> Result<(), Error> {
 
     if let Some(envvars) = core::get_envvars(&ctx)? {
         for (k, v) in envvars {
-            println!("{k}={v}");
+            io::stdout().write_all(k.as_bytes())?;
+            io::stdout().write_all(b"=")?;
+            io::stdout().write_all(v.as_bytes())?;
+            io::stdout().write_all(b"\n")?;
         }
 
         Ok(())
@@ -465,7 +480,7 @@ fn command_shim(mut commands: Vec<String>, yes: bool) -> Result<(), Error> {
                 std::process::exit(1);
             }
         };
-        let path_envvar = envvars.get("PATH").map(String::as_str);
+        let path_envvar = envvars.get(OsStr::new("PATH")).map(OsString::as_os_str);
         commands = get_missing_shims(&quickenv_home, path_envvar)?;
 
         if !commands.is_empty() {
@@ -611,8 +626,36 @@ fn exec_shimmed_binary(
     program_name: &OsStr,
     args: Vec<OsString>,
 ) -> Result<(), Error> {
-    log::debug!("attempting to launch shim");
+    log::debug!("attempting to launch shim for {:?}", program_name);
 
+    let quickenv_home = crate::core::get_quickenv_home()?;
+    let shimmed_binary_result =
+        find_shimmed_binary(&quickenv_home, self_program_name, program_name)
+            .context("failed to find actual binary")?;
+
+    for (k, v) in shimmed_binary_result.envvars_override {
+        log::debug!("export {:?}={:?}", k, v);
+        std::env::set_var(k, v);
+    }
+
+    log::debug!("execvp {}", shimmed_binary_result.path.display());
+
+    let mut full_args = vec![shimmed_binary_result.path.clone().into_os_string()];
+    full_args.extend(args);
+
+    Err(exec::execvp(&shimmed_binary_result.path, &full_args).into())
+}
+
+struct ShimmedBinaryResult {
+    path: PathBuf,
+    envvars_override: core::Env,
+}
+
+fn find_shimmed_binary(
+    quickenv_home: &Path,
+    self_program_name: &OsStr,
+    program_name: &OsStr,
+) -> Result<ShimmedBinaryResult, Error> {
     let own_path =
         which::which(&self_program_name).context("failed to determine path of own program")?;
     log::debug!("abspath of self is {}", own_path.display());
@@ -626,14 +669,13 @@ fn exec_shimmed_binary(
         }
     };
 
+    let mut envvars_override = BTreeMap::<OsString, OsString>::new();
+
     if std::env::var("QUICKENV_NO_SHIM").unwrap_or_default() != "1" {
-        let quickenv_home = crate::core::get_quickenv_home()?;
-        match resolve_envrc_context(&quickenv_home).and_then(|ctx| core::get_envvars(&ctx)) {
+        match resolve_envrc_context(quickenv_home).and_then(|ctx| core::get_envvars(&ctx)) {
             Ok(None) => (),
             Ok(Some(envvars)) => {
-                for (k, v) in envvars {
-                    std::env::set_var(k, v);
-                }
+                envvars_override.extend(envvars);
             }
             Err(core::Error::NoEnvrc) => (),
             Err(e) => {
@@ -642,9 +684,14 @@ fn exec_shimmed_binary(
         }
     }
 
+    let old_path = envvars_override
+        .get(OsStr::new("PATH"))
+        .cloned()
+        .or_else(|| std::env::var_os("PATH"))
+        .ok_or_else(|| anyhow::anyhow!("failed to read PATH"))?;
     let mut new_path = OsString::new();
 
-    for entry in std::env::split_paths(&std::env::var("PATH").context("failed to read PATH")?) {
+    for entry in std::env::split_paths(&old_path) {
         if own_path_parent == entry
             || std::fs::canonicalize(&entry).map_or(false, |x| x == own_path_parent)
         {
@@ -659,7 +706,7 @@ fn exec_shimmed_binary(
         new_path.push(entry);
     }
 
-    std::env::set_var("PATH", new_path);
+    envvars_override.insert(OsStr::new("PATH").to_owned(), new_path);
 
     let program_basename = Path::new(&program_name)
         .file_name()
@@ -667,14 +714,17 @@ fn exec_shimmed_binary(
         .to_str()
         .unwrap();
 
-    let path = which::which(&program_basename)
-        .with_context(|| format!("failed to find {program_basename} on path"))?;
-    log::debug!("execvp {}", path.display());
+    let path = which::which_in(
+        &program_basename,
+        envvars_override.get(OsStr::new("PATH")),
+        std::env::current_dir().context("failed to get current working directory")?,
+    )
+    .with_context(|| format!("failed to find {program_basename}"))?;
 
-    let mut full_args = vec![path.clone().into_os_string()];
-    full_args.extend(args);
-
-    Err(exec::execvp(&path, &full_args).into())
+    Ok(ShimmedBinaryResult {
+        path,
+        envvars_override,
+    })
 }
 
 fn check_for_shim() -> Result<(), Error> {
@@ -706,4 +756,24 @@ fn command_exec(program_name: OsString, args: Vec<OsString>) -> Result<(), Error
         .ok_or_else(|| anyhow::anyhow!("failed to determine own program name"))?;
 
     exec_shimmed_binary(&self_program_name, &program_name, args)
+}
+
+fn command_which(program_name: OsString, pretend_shimmed: bool) -> Result<(), Error> {
+    let quickenv_home = crate::core::get_quickenv_home()?;
+    if !pretend_shimmed
+        && which::which(&program_name)? != quickenv_home.join("bin").join(&program_name)
+    {
+        log::error!("{:?} is not shimmed by quickenv", program_name);
+        std::process::exit(1);
+    }
+
+    let mut args_iter = std::env::args_os();
+    let self_program_name = args_iter
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("failed to determine own program name"))?;
+
+    let shimmed_binary_result =
+        find_shimmed_binary(&quickenv_home, &self_program_name, &program_name)?;
+    println!("{}", shimmed_binary_result.path.display());
+    Ok(())
 }
