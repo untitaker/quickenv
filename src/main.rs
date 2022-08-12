@@ -15,9 +15,9 @@ use anyhow::{Context, Error};
 use clap::Parser;
 use console::style;
 
-mod confirm;
 mod core;
 mod grid;
+mod signals;
 
 use crate::core::resolve_envrc_context;
 
@@ -30,6 +30,8 @@ use crate::core::resolve_envrc_context;
     after_help = "ENVIRONMENT VARIABLES:
     QUICKENV_LOG=debug to enable debug output (in shim commands as well)
     QUICKENV_LOG=error to silence everything but errors
+    QUICKENV_NO_SHIM=1 to disable loading of .envrc, and effectively disable shims
+    QUICKENV_SHIM_EXEC=1 to directly exec() shims instead of spawning them as subprocess. This can help with attaching debuggers.
 "
 )]
 struct Args {
@@ -138,7 +140,7 @@ fn main_inner() -> Result<(), Error> {
 
     let args = Args::parse();
 
-    crate::confirm::set_ctrlc_handler()?;
+    crate::signals::set_ctrlc_handler()?;
 
     match args.subcommand {
         Command::Reload => command_reload(),
@@ -311,6 +313,8 @@ echo '// END QUICKENV-AFTER'
             )
         })?;
 
+    signals::pass_control_to_shim();
+
     let mut cmd = process::Command::new("bash")
         .arg(temp_script.path())
         .env("QUICKENV_NO_SHIM", "1")
@@ -357,8 +361,8 @@ echo '// END QUICKENV-AFTER'
 fn get_missing_shims(
     quickenv_home: &Path,
     new_path_envvar: Option<&OsStr>,
-) -> Result<Vec<String>, Error> {
-    let mut rv = Vec::new();
+) -> Result<BTreeSet<String>, Error> {
+    let mut rv = BTreeSet::new();
     let new_path_envvar = match new_path_envvar {
         Some(x) => x,
         None => return Ok(rv),
@@ -390,7 +394,7 @@ fn get_missing_shims(
 fn get_missing_shims_from_dir(
     quickenv_home: &Path,
     path: &Path,
-    rv: &mut Vec<String>,
+    rv: &mut BTreeSet<String>,
 ) -> Result<(), Error> {
     for entry in std::fs::read_dir(path)? {
         let entry = entry?;
@@ -413,7 +417,7 @@ fn get_missing_shims_from_dir(
         };
 
         if !quickenv_home.join("bin").join(filename).exists() {
-            rv.push(filename.to_owned());
+            rv.insert(filename.to_owned());
         }
     }
 
@@ -423,21 +427,60 @@ fn get_missing_shims_from_dir(
 fn command_reload() -> Result<(), Error> {
     let quickenv_home = crate::core::get_quickenv_home()?;
     compute_envvars(&quickenv_home)?;
-    let ctx = resolve_envrc_context(&quickenv_home)?;
-    let new_envvars =
-        crate::core::get_envvars(&ctx)?.expect("somehow didn't end up writing envvars");
-    let new_path_envvar = new_envvars.get(OsStr::new("PATH")).map(OsString::as_os_str);
-    let missing_shims = get_missing_shims(&quickenv_home, new_path_envvar)?;
-
-    if !missing_shims.is_empty() {
-        log::info!(
-            "{} unshimmed commands. Use {} to make them available.",
-            style(missing_shims.len()).green(),
-            style("'quickenv shim'").magenta(),
-        )
-    }
+    CheckUnshimmedCommands::new(&quickenv_home)?.check_unshimmed_commands()?;
 
     Ok(())
+}
+
+struct CheckUnshimmedCommands<'a> {
+    ctx: core::EnvrcContext,
+    quickenv_home: &'a Path,
+    old_missing_shims: BTreeSet<String>,
+}
+
+impl<'a> CheckUnshimmedCommands<'a> {
+    fn new(quickenv_home: &'a Path) -> Result<Self, Error> {
+        Ok(CheckUnshimmedCommands {
+            ctx: resolve_envrc_context(quickenv_home)?,
+            quickenv_home,
+            old_missing_shims: BTreeSet::new(),
+        })
+    }
+
+    fn exclude_current(&mut self) -> Result<(), Error> {
+        let envvars = match crate::core::get_envvars(&self.ctx)? {
+            Some(x) => x,
+            None => return Ok(()),
+        };
+
+        let new_path_envvar = envvars.get(OsStr::new("PATH")).map(OsString::as_os_str);
+
+        self.old_missing_shims = get_missing_shims(self.quickenv_home, new_path_envvar)?;
+        Ok(())
+    }
+
+    fn check_unshimmed_commands(self) -> Result<(), Error> {
+        let envvars = match crate::core::get_envvars(&self.ctx)? {
+            Some(x) => x,
+            None => return Ok(()),
+        };
+
+        let new_path_envvar = envvars.get(OsStr::new("PATH")).map(OsString::as_os_str);
+        let mut missing_shims = get_missing_shims(self.quickenv_home, new_path_envvar)?;
+        for elem in &self.old_missing_shims {
+            missing_shims.remove(elem);
+        }
+
+        if !missing_shims.is_empty() {
+            log::warn!(
+                "{} unshimmed commands. Use {} to make them available.",
+                style(missing_shims.len()).green(),
+                style("'quickenv shim'").magenta(),
+            )
+        }
+
+        Ok(())
+    }
 }
 
 fn command_vars() -> Result<(), Error> {
@@ -481,7 +524,9 @@ fn command_shim(mut commands: Vec<String>, yes: bool) -> Result<(), Error> {
             }
         };
         let path_envvar = envvars.get(OsStr::new("PATH")).map(OsString::as_os_str);
-        commands = get_missing_shims(&quickenv_home, path_envvar)?;
+        commands = get_missing_shims(&quickenv_home, path_envvar)?
+            .into_iter()
+            .collect();
 
         if !commands.is_empty() {
             eprintln!(
@@ -628,17 +673,36 @@ fn exec_shimmed_binary(program_name: &OsStr, args: Vec<OsString>) -> Result<(), 
     let shimmed_binary_result = find_shimmed_binary(&quickenv_home, program_name)
         .context("failed to find actual binary")?;
 
-    for (k, v) in shimmed_binary_result.envvars_override {
-        log::debug!("export {:?}={:?}", k, v);
-        std::env::set_var(k, v);
+    if std::env::var("QUICKENV_SHIM_EXEC").unwrap_or_default() == "1" {
+        for (k, v) in shimmed_binary_result.envvars_override {
+            log::debug!("export {:?}={:?}", k, v);
+            std::env::set_var(k, v);
+        }
+
+        log::debug!("execvp {}", shimmed_binary_result.path.display());
+
+        let mut full_args = vec![shimmed_binary_result.path.clone().into_os_string()];
+        full_args.extend(args);
+
+        Err(exec::execvp(&shimmed_binary_result.path, &full_args).into())
+    } else {
+        let mut unshimmed_commands = CheckUnshimmedCommands::new(&quickenv_home);
+        let _ignored = unshimmed_commands.as_mut().map(|x| x.exclude_current());
+
+        let exitcode = process::Command::new(shimmed_binary_result.path)
+            .args(args)
+            .envs(shimmed_binary_result.envvars_override)
+            .status()
+            .context("failed to spawn shim subcommand")?;
+
+        let _ignored = unshimmed_commands.map(|x| x.check_unshimmed_commands());
+
+        if let Some(code) = exitcode.code() {
+            std::process::exit(code);
+        }
+
+        Ok(())
     }
-
-    log::debug!("execvp {}", shimmed_binary_result.path.display());
-
-    let mut full_args = vec![shimmed_binary_result.path.clone().into_os_string()];
-    full_args.extend(args);
-
-    Err(exec::execvp(&shimmed_binary_result.path, &full_args).into())
 }
 
 struct ShimmedBinaryResult {

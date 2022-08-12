@@ -20,7 +20,7 @@ fn test_basic() -> Result<(), Error> {
     ----- stdout -----
 
     ----- stderr -----
-    1 unshimmed commands. Use 'quickenv shim' to make them available.
+    [WARN quickenv] 1 unshimmed commands. Use 'quickenv shim' to make them available.
     "###);
     harness.which("hello").unwrap_err();
     assert_cmd!(harness, quickenv "shim" "hello",  @r###"
@@ -58,7 +58,7 @@ fn test_basic() -> Result<(), Error> {
     ----- stdout -----
 
     ----- stderr -----
-    1 unshimmed commands. Use 'quickenv shim' to make them available.
+    [WARN quickenv] 1 unshimmed commands. Use 'quickenv shim' to make them available.
     "###);
     Ok(())
 }
@@ -278,7 +278,7 @@ fn test_exec() -> Result<(), Error> {
     ----- stdout -----
 
     ----- stderr -----
-    1 unshimmed commands. Use 'quickenv shim' to make them available.
+    [WARN quickenv] 1 unshimmed commands. Use 'quickenv shim' to make them available.
     "###);
 
     harness.which("hello").unwrap_err();
@@ -290,6 +290,91 @@ fn test_exec() -> Result<(), Error> {
 
     ----- stderr -----
     "###);
+    Ok(())
+}
+
+#[test]
+fn test_shim_creating_shims() -> Result<(), Error> {
+    let harness = setup()?;
+
+    write(harness.join(".envrc"), "export PATH=bogus:$PATH\n")?;
+    assert_cmd!(harness, quickenv "reload", @r###"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+
+    ----- stderr -----
+    "###);
+
+    create_dir_all(harness.join("bogus"))?;
+    write(harness.join("bogus/hello"), "#!/bin/sh\necho hello world")?;
+    set_executable(harness.join("bogus/hello"))?;
+
+    // there is a command. it does not create more commands. quickenv should not amend any output
+    assert_cmd!(harness, quickenv "exec" "hello", @r###"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+    hello world
+
+    ----- stderr -----
+    "###);
+
+    // shimming the command should work
+    assert_cmd!(harness, quickenv "shim" "--yes", @r###"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+
+    ----- stderr -----
+    Found these unshimmed commands in your .envrc:
+
+    hello
+
+    Quickenv will create this new shim binary in [scrubbed $HOME]/.quickenv/bin/.
+    Inside of [scrubbed $HOME]/project, those commands will run with .envrc enabled.
+    Outside, they will run normally.
+    Created 1 new shims in [scrubbed $HOME]/.quickenv/bin/.
+    Use 'quickenv unshim <command>' to remove them again.
+    Use 'quickenv shim <command>' to run additional commands with .envrc enabled.
+    "###);
+
+    // change the command such that it creates another command, and run it
+    write(
+        harness.join("bogus/hello"),
+        "#!/bin/sh\necho 'echo hello world' > bogus/hello2 && chmod +x bogus/hello2",
+    )?;
+    set_executable(harness.join("bogus/hello"))?;
+
+    // quickenv should warn that more commands need shimming now
+    assert_cmd!(harness, quickenv "exec" "hello", @r###"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+
+    ----- stderr -----
+    [WARN quickenv] 1 unshimmed commands. Use 'quickenv shim' to make them available.
+    "###);
+
+    // quickenv shim should find the new command
+    assert_cmd!(harness, quickenv "shim" "--yes", @r###"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+
+    ----- stderr -----
+    Found these unshimmed commands in your .envrc:
+
+    hello2
+
+    Quickenv will create this new shim binary in [scrubbed $HOME]/.quickenv/bin/.
+    Inside of [scrubbed $HOME]/project, those commands will run with .envrc enabled.
+    Outside, they will run normally.
+    Created 1 new shims in [scrubbed $HOME]/.quickenv/bin/.
+    Use 'quickenv unshim <command>' to remove them again.
+    Use 'quickenv shim <command>' to run additional commands with .envrc enabled.
+    "###);
+
     Ok(())
 }
 
@@ -308,7 +393,7 @@ fn test_auto_shimming() -> Result<(), Error> {
     ----- stdout -----
 
     ----- stderr -----
-    1 unshimmed commands. Use 'quickenv shim' to make them available.
+    [WARN quickenv] 1 unshimmed commands. Use 'quickenv shim' to make them available.
     "###);
 
     assert_cmd!(harness, quickenv "shim" "-y", @r###"
@@ -427,7 +512,7 @@ fn test_which() -> Result<(), Error> {
     ----- stdout -----
 
     ----- stderr -----
-    1 unshimmed commands. Use 'quickenv shim' to make them available.
+    [WARN quickenv] 1 unshimmed commands. Use 'quickenv shim' to make them available.
     "###);
     assert_cmd!(harness, quickenv "which" "hello", @r###"
     success: false
