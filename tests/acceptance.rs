@@ -20,7 +20,8 @@ fn test_basic() -> Result<(), Error> {
     ----- stdout -----
 
     ----- stderr -----
-    [WARN quickenv] 1 unshimmed commands. Use 'quickenv shim' to make them available.
+    [WARN quickenv] 1 unshimmed commands (1 new). Use 'quickenv shim' to make them available.
+    Set QUICKENV_NO_SHIM_WARNINGS=1 to silence this message.
     "###);
     harness.which("hello").unwrap_err();
     assert_cmd!(harness, quickenv "shim" "hello",  @r###"
@@ -59,6 +60,7 @@ fn test_basic() -> Result<(), Error> {
 
     ----- stderr -----
     [WARN quickenv] 1 unshimmed commands. Use 'quickenv shim' to make them available.
+    Set QUICKENV_NO_SHIM_WARNINGS=1 to silence this message.
     "###);
     Ok(())
 }
@@ -278,7 +280,8 @@ fn test_exec() -> Result<(), Error> {
     ----- stdout -----
 
     ----- stderr -----
-    [WARN quickenv] 1 unshimmed commands. Use 'quickenv shim' to make them available.
+    [WARN quickenv] 1 unshimmed commands (1 new). Use 'quickenv shim' to make them available.
+    Set QUICKENV_NO_SHIM_WARNINGS=1 to silence this message.
     "###);
 
     harness.which("hello").unwrap_err();
@@ -353,7 +356,8 @@ fn test_shim_creating_shims() -> Result<(), Error> {
     ----- stdout -----
 
     ----- stderr -----
-    [WARN quickenv] 1 unshimmed commands. Use 'quickenv shim' to make them available.
+    [WARN quickenv] 1 unshimmed commands (1 new). Use 'quickenv shim' to make them available.
+    Set QUICKENV_NO_SHIM_WARNINGS=1 to silence this message.
     "###);
 
     // quickenv shim should find the new command
@@ -393,7 +397,8 @@ fn test_auto_shimming() -> Result<(), Error> {
     ----- stdout -----
 
     ----- stderr -----
-    [WARN quickenv] 1 unshimmed commands. Use 'quickenv shim' to make them available.
+    [WARN quickenv] 1 unshimmed commands (1 new). Use 'quickenv shim' to make them available.
+    Set QUICKENV_NO_SHIM_WARNINGS=1 to silence this message.
     "###);
 
     assert_cmd!(harness, quickenv "shim" "-y", @r###"
@@ -512,7 +517,8 @@ fn test_which() -> Result<(), Error> {
     ----- stdout -----
 
     ----- stderr -----
-    [WARN quickenv] 1 unshimmed commands. Use 'quickenv shim' to make them available.
+    [WARN quickenv] 1 unshimmed commands (1 new). Use 'quickenv shim' to make them available.
+    Set QUICKENV_NO_SHIM_WARNINGS=1 to silence this message.
     "###);
     assert_cmd!(harness, quickenv "which" "hello", @r###"
     success: false
