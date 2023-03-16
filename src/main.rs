@@ -805,7 +805,7 @@ fn find_shimmed_binary(
         .unwrap();
 
     let path = which::which_in(
-        &program_basename,
+        program_basename,
         envvars_override.get(OsStr::new("PATH")),
         std::env::current_dir().context("failed to get current working directory")?,
     )
