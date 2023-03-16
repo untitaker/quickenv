@@ -745,7 +745,8 @@ fn exec_shimmed_binary(program_name: &OsStr, args: Vec<OsString>) -> Result<(), 
             std::process::exit(code);
         }
 
-        Ok(())
+        log::debug!("quickenv did not get an exitcode from child process, using exit 134");
+        std::process::exit(134)
     }
 }
 
