@@ -37,7 +37,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        build: [linux, macos, macos-m1, windows]
+        build: [linux, macos, macos-m1]
         include:
           - build: linux
             os: ubuntu-latest
@@ -49,11 +49,6 @@ jobs:
             asset_name: quickenv-mac-x86_64
             cargo_name: quickenv
             rustup_target: x86_64-apple-darwin
-          - build: windows
-            os: windows-latest
-            asset_name: quickenv-windows-x86_64.exe
-            cargo_name: quickenv.exe
-            rustup_target: x86_64-pc-windows-msvc
           - build: macos-m1
             os: macos-latest
             asset_name: quickenv-mac-aarch64
