@@ -33,10 +33,23 @@ common commands (`yarn`, `npm`, `node`).
 
 ## Installation
 
-**quickenv is work in progress and most likely contains bugs. that said, I use it daily at work**
+**quickenv is work in progress. that said, I use it daily at work**
 
-* `quickenv` currently assumes `direnv` is in your path, in order to load
-its "standard library".
+[Download the latest binary](https://github.com/untitaker/quickenv/releases) and:
+
+```bash
+# Into your bashrc/zshrc. This should be at the front of your PATH, such that
+# quickenv can shim/shadow binaries effectively.
+export PATH=$HOME/.quickenv/bin/:$PATH
+
+# You can remove "direnv hook" from your bashrc/zshrc, but the tool needs to
+# stay installed.
+```
+
+Some notes:
+
+* `quickenv` currently assumes `direnv` is in your path, in order to load its
+  "standard library".
 
 * `quickenv` also currently does not have pre-built binaries. You need to
   [install Rust](https://rustup.rs/) and install it using Rust's package
@@ -44,12 +57,11 @@ its "standard library".
 
 * `quickenv` assumes a POSIX environment.
 
-```bash
-cargo install quickenv
+### Installation from source
 
-# Into your bashrc/zshrc. This should be at the front of your PATH, such that
-# quickenv can shim/shadow binaries effectively.
-export PATH=$HOME/.quickenv/bin/:$PATH
+```bash
+cargo install quickenv  # latest stable release
+cargo install --git https://github.com/untitaker/quickenv  # latest git SHA
 ```
 
 ## Usage

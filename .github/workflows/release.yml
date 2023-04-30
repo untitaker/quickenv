@@ -1,0 +1,93 @@
+# adapted from https://github.com/paskausks/rust-bin-github-workflows/blob/master/.github/workflows/release.yml
+# copied from https://github.com/untitaker/hyperlink/blob/main/.github/workflows/release.yml
+on:
+  push:
+    tags: '*'
+
+name: Create Release
+
+jobs:
+  release:
+    name: release
+    runs-on: ubuntu-latest
+    steps:
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1.0.0
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref }}
+        release_name: Release ${{ github.ref }}
+        draft: false
+        prerelease: false
+    - name: Output Release URL File
+      run: echo "${{ steps.create_release.outputs.upload_url }}" > upload_url.txt
+    - name: Save Release URL File for publish
+      uses: actions/upload-artifact@v1
+      with:
+        name: upload_url
+        path: upload_url.txt
+
+  build:
+    name: artifact
+
+    needs: [release]
+
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        build: [linux, macos, macos-m1, windows]
+        include:
+          - build: linux
+            os: ubuntu-latest
+            asset_name: quickenv-linux-x86_64
+            cargo_name: quickenv
+            rustup_target: x86_64-unknown-linux-musl
+          - build: macos
+            os: macos-latest
+            asset_name: quickenv-mac-x86_64
+            cargo_name: quickenv
+            rustup_target: x86_64-apple-darwin
+          - build: windows
+            os: windows-latest
+            asset_name: quickenv-windows-x86_64.exe
+            cargo_name: quickenv.exe
+            rustup_target: x86_64-pc-windows-msvc
+          - build: macos-m1
+            os: macos-latest
+            asset_name: quickenv-mac-aarch64
+            cargo_name: quickenv
+            rustup_target: aarch64-apple-darwin
+
+    steps:
+      - uses: actions/checkout@v1
+
+      - name: Load Release URL File from release job
+        uses: actions/download-artifact@v1
+        with:
+          name: upload_url
+
+      - name: Get Release File Name & Upload URL
+        id: get-release-info
+        shell: bash
+        run: echo ::set-output name=upload_url::`cat upload_url/upload_url.txt`
+
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: ${{ matrix.rustup_target }}
+
+      - name: Build
+        run: cargo build --verbose --release --locked --target ${{ matrix.rustup_target }}
+
+      - name: Upload Release Asset
+        id: upload-release-asset
+        uses: actions/upload-release-asset@v1.0.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.get-release-info.outputs.upload_url }}
+          asset_path: ./target/${{ matrix.rustup_target }}/release/${{ matrix.cargo_name }}
+          asset_name: ${{ matrix.asset_name }}
+          asset_content_type: application/zip
