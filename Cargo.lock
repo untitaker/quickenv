@@ -416,7 +416,7 @@ dependencies = [
 
 [[package]]
 name = "quickenv"
-version = "0.3.6"
+version = "0.3.7"
 dependencies = [
  "anyhow",
  "blake3",
