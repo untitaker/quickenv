@@ -274,7 +274,7 @@ fn compute_envvars(quickenv_home: &Path) -> Result<(), Error> {
             &ctx.env_cache_dir.display()
         )
     })?;
-    let temp_script = tempfile::NamedTempFile::new_in(&ctx.env_cache_dir)
+    let temp_script = tempfile::NamedTempFile::new_in(&ctx.root)
         .with_context(|| format!("failed to create temporary file at {}", ctx.root.display()))?;
     let temp_script_path = temp_script.path().to_owned();
     let mut temp_script = BufWriter::new(temp_script);
