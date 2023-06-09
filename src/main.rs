@@ -274,10 +274,9 @@ fn compute_envvars(quickenv_home: &Path) -> Result<(), Error> {
             &ctx.env_cache_dir.display()
         )
     })?;
-    let temp_script = tempfile::NamedTempFile::new_in(&ctx.root)
+    let mut temp_script = tempfile::NamedTempFile::new_in(&ctx.root)
         .with_context(|| format!("failed to create temporary file at {}", ctx.root.display()))?;
     let temp_script_path = temp_script.path().to_owned();
-    let mut temp_script = BufWriter::new(temp_script);
 
     let write_failure = || {
         format!(
@@ -287,7 +286,7 @@ fn compute_envvars(quickenv_home: &Path) -> Result<(), Error> {
     };
 
     let prelude =
-        std::env::var("QUICKENV_PRELUDE").unwrap_or_else(|_| "eval \"$(direnv stdlib)\"".to_owned());
+        std::env::var("QUICKENV_PRELUDE").unwrap_or_else(|_| r#"eval "$(direnv stdlib)""#.to_owned());
 
     write!(
         temp_script,
@@ -296,7 +295,7 @@ echo '// BEGIN QUICKENV-BEFORE'
 env
 echo '// END QUICKENV-BEFORE'
 {prelude}
-"##
+"##,
     )
     .with_context(write_failure)?;
 
@@ -315,7 +314,7 @@ echo '// END QUICKENV-AFTER'
     signals::pass_control_to_shim();
 
     let mut cmd = process::Command::new("bash")
-        .arg(temp_script_path)
+        .arg(&temp_script_path)
         .env("QUICKENV_NO_SHIM", "1")
         .stdin(Stdio::inherit())
         .stdout(Stdio::piped())
