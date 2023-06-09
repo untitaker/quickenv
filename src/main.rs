@@ -33,7 +33,7 @@ use crate::core::resolve_envrc_context;
     QUICKENV_NO_SHIM=1 to disable loading of .envrc, and effectively disable shims
     QUICKENV_SHIM_EXEC=1 to directly exec() shims instead of spawning them as subprocess. This can help with attaching debuggers.
     QUICKENV_NO_SHIM_WARNINGS=1 to disable nags about running 'quickenv shim' everytime a new binary is added
-    QUICKENV_PRELUDE='eval $(direnv stdlib)' can be overridden to something else to get rid of the direnv stdlib and therefore direnv dependency, or to inject additional code before executing each envrc.
+    QUICKENV_PRELUDE='eval \"$(direnv stdlib)\"' can be overridden to something else to get rid of the direnv stdlib and therefore direnv dependency, or to inject additional code before executing each envrc.
 "
 )]
 struct Args {
@@ -287,7 +287,7 @@ fn compute_envvars(quickenv_home: &Path) -> Result<(), Error> {
     };
 
     let prelude =
-        std::env::var("QUICKENV_PRELUDE").unwrap_or_else(|_| "eval $(direnv stdlib)".to_owned());
+        std::env::var("QUICKENV_PRELUDE").unwrap_or_else(|_| "eval \"$(direnv stdlib)\"".to_owned());
 
     write!(
         temp_script,
