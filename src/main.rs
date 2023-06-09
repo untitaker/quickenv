@@ -285,8 +285,8 @@ fn compute_envvars(quickenv_home: &Path) -> Result<(), Error> {
         )
     };
 
-    let prelude =
-        std::env::var("QUICKENV_PRELUDE").unwrap_or_else(|_| r#"eval "$(direnv stdlib)""#.to_owned());
+    let prelude = std::env::var("QUICKENV_PRELUDE")
+        .unwrap_or_else(|_| r#"eval "$(direnv stdlib)""#.to_owned());
 
     write!(
         temp_script,
