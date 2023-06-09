@@ -33,6 +33,7 @@ use crate::core::resolve_envrc_context;
     QUICKENV_NO_SHIM=1 to disable loading of .envrc, and effectively disable shims
     QUICKENV_SHIM_EXEC=1 to directly exec() shims instead of spawning them as subprocess. This can help with attaching debuggers.
     QUICKENV_NO_SHIM_WARNINGS=1 to disable nags about running 'quickenv shim' everytime a new binary is added
+    QUICKENV_PRELUDE='eval $(direnv stdlib)' can be overridden to something else to get rid of the direnv stdlib and therefore direnv dependency, or to inject additional code before executing each envrc.
 "
 )]
 struct Args {
@@ -273,51 +274,48 @@ fn compute_envvars(quickenv_home: &Path) -> Result<(), Error> {
             &ctx.env_cache_dir.display()
         )
     })?;
-    let mut temp_script = tempfile::NamedTempFile::new_in(&ctx.root)
+    let temp_script = tempfile::NamedTempFile::new_in(&ctx.env_cache_dir)
         .with_context(|| format!("failed to create temporary file at {}", ctx.root.display()))?;
+    let temp_script_path = temp_script.path().to_owned();
+    let mut temp_script = BufWriter::new(temp_script);
 
-    temp_script
-        .write_all(
-            br#"
+    let write_failure = || {
+        format!(
+            "failed to write to temporary file at {}",
+            temp_script_path.display()
+        )
+    };
+
+    let prelude =
+        std::env::var("QUICKENV_PRELUDE").unwrap_or_else(|_| "eval $(direnv stdlib)".to_owned());
+
+    write!(
+        temp_script,
+        r##"
 echo '// BEGIN QUICKENV-BEFORE'
 env
 echo '// END QUICKENV-BEFORE'
-eval "$(direnv stdlib)"
-"#,
-        )
-        .with_context(|| {
-            format!(
-                "failed to write to temporary file at {}",
-                temp_script.path().display()
-            )
-        })?;
+{prelude}
+"##
+    )
+    .with_context(write_failure)?;
 
-    io::copy(&mut ctx.envrc, &mut temp_script).with_context(|| {
-        format!(
-            "failed to write to temporary file at {}",
-            temp_script.path().display()
-        )
-    })?;
+    io::copy(&mut ctx.envrc, &mut temp_script).with_context(write_failure)?;
 
-    temp_script
-        .write_all(
-            br#"
+    write!(
+        temp_script,
+        r##"
 echo '// BEGIN QUICKENV-AFTER'
 env
 echo '// END QUICKENV-AFTER'
-"#,
-        )
-        .with_context(|| {
-            format!(
-                "failed to write to temporary file at {}",
-                temp_script.path().display()
-            )
-        })?;
+"##
+    )
+    .with_context(write_failure)?;
 
     signals::pass_control_to_shim();
 
     let mut cmd = process::Command::new("bash")
-        .arg(temp_script.path())
+        .arg(temp_script_path)
         .env("QUICKENV_NO_SHIM", "1")
         .stdin(Stdio::inherit())
         .stdout(Stdio::piped())
