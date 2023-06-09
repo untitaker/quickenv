@@ -11,7 +11,7 @@ use tempfile::TempDir;
 
 pub struct Harness {
     pub env: BTreeMap<OsString, OsString>,
-    pub home: TempDir,
+    pub home: Option<TempDir>,
     pub cwd: PathBuf,
 }
 
@@ -73,6 +73,14 @@ impl Harness {
     }
 }
 
+impl Drop for Harness {
+    fn drop(&mut self) {
+        if std::env::var("QUICKENV_TEST_LEAK_FILES").unwrap_or_default() == "1" {
+            std::mem::forget(self.home.take());
+        }
+    }
+}
+
 pub fn setup() -> Result<Harness, Error> {
     let home = tempfile::tempdir()?;
     // on macos, /tmp is a symlink to /private/..., so sometimes the path reported by tmpdir is not
@@ -82,7 +90,7 @@ pub fn setup() -> Result<Harness, Error> {
     create_dir_all(&cwd)?;
     let mut harness = Harness {
         env: BTreeMap::new(),
-        home,
+        home: Some(home),
         cwd,
     };
 
@@ -114,6 +122,7 @@ macro_rules! assert_cmd {
         insta_cmd::assert_cmd_snapshot!(
             Command::new($harness.which(stringify!($program_name))?)
             .current_dir(&$harness.cwd)
+            .env_remove("QUICKENV_PRELUDE")
             .envs(&$harness.env)
             $(.arg($arg))*,
             $($insta_args)*
