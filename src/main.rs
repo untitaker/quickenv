@@ -834,6 +834,7 @@ fn check_for_shim() -> Result<(), Error> {
     }
 
     exec_shimmed_binary(&program_name, args_iter.collect())
+        .with_context(|| format!("failed to run {}", program_basename))
 }
 
 fn command_exec(program_name: OsString, args: Vec<OsString>) -> Result<(), Error> {
