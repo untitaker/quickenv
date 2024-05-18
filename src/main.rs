@@ -65,20 +65,17 @@ enum Command {
         yes: bool,
         /// The names of the commands to expose. If missing, quickenv will determine recommended
         /// commands itself and ask for confirmation.
-        #[clap(value_parser)]
         commands: Vec<String>,
     },
     /// Remove a shim binary from ~/.quickenv/bin/.
     Unshim {
-        #[clap(value_parser)]
         /// The names of the commands to remove.
         commands: Vec<String>,
     },
     /// Run a program with .envrc loaded without having to shim it.
     Exec {
-        #[clap(value_parser)]
         program_name: OsString,
-        #[clap(value_parser)]
+        #[clap(allow_hyphen_values = true, trailing_var_arg = true)]
         args: Vec<OsString>,
     },
     /// Determine which program quickenv's shim would launch under the hood.
@@ -87,7 +84,6 @@ enum Command {
     /// happen anyway.
     Which {
         /// The command name to look up.
-        #[clap(value_parser)]
         program_name: OsString,
 
         /// If quickenv does not have a shim under the given program name, this command errors by

@@ -495,9 +495,10 @@ fn test_eating_own_tail3() -> Result<(), Error> {
     [ERROR quickenv] failed to run shimmed command
 
     Caused by:
-        0: failed to find actual binary
-        1: failed to find hello
-        2: cannot find binary path
+        0: failed to run hello
+        1: failed to find actual binary
+        2: failed to find hello
+        3: cannot find binary path
     "###);
     Ok(())
 }
