@@ -19,7 +19,7 @@ fn print_as_grid_inner<T: AsRef<str>>(strings: &[T]) -> Option<()> {
             filling: Filling::Spaces(2),
             direction: Direction::LeftToRight,
             width: width.into(),
-        }
+        },
     );
 
     eprint!("{grid}");
