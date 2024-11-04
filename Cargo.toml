@@ -20,20 +20,21 @@ blake3 = "1.3.1"
 clap = { version = "4", features = ["derive", "std", "color"], default-features = false }
 console = { version = "0.15.0", default-features = false }
 ctrlc = "3.2.2"
-dialoguer = { version = "0.10.1", default-features = false }
-env_logger = { version = "0.9.0", default-features = false }
+dialoguer = { version = "0.11.0", default-features = false }
+env_logger = { version = "0.11.5", default-features = false }
 exec = "0.3.1"
 hex = "0.4.3"
 log = "0.4.17"
 tempfile = "3.3.0"
 
-# bugs in 0.2: https://github.com/ogham/rust-term-grid/pull/14
-term_grid = "0.1.7"
+# using fork because we're requiring this bugfix:
+# https://github.com/ogham/rust-term-grid/pull/14
+uutils_term_grid = "0.6.0"
 thiserror = "1.0.31"
-which = "4.2.5"
+which = "7"
 
 [dev-dependencies]
-insta = { version = "1.18.0", features = ["filters"], default-features = false }
-insta-cmd = "0.2.0"
+insta = { version = "1.41.0", features = ["filters"], default-features = false }
+insta-cmd = "0.6.0"
 maplit = "1.0.2"
 regex = { version = "1.6.0", default-features = false }

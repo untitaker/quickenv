@@ -9,19 +9,18 @@ pub fn print_as_grid<T: AsRef<str>>(strings: &[T]) {
 }
 
 fn print_as_grid_inner<T: AsRef<str>>(strings: &[T]) -> Option<()> {
-    let mut grid = Grid::new(GridOptions {
-        filling: Filling::Spaces(2),
-        direction: Direction::LeftToRight,
-    });
-
-    for string in strings {
-        grid.add(string.as_ref().into());
-    }
-
     let width = console::Term::stderr()
         .size_checked()
         .map(|(_rows, cols)| cols)?;
-    let grid = grid.fit_into_width(width.into())?;
+
+    let grid = Grid::new(
+        strings.iter().collect(),
+        GridOptions {
+            filling: Filling::Spaces(2),
+            direction: Direction::LeftToRight,
+            width: width.into(),
+        }
+    );
 
     eprint!("{grid}");
     Some(())
