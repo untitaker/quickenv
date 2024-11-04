@@ -1,0 +1,10 @@
+version: 2
+updates:
+- package-ecosystem: cargo
+  directories: ["/"]
+  schedule:
+    interval: weekly
+  groups:
+    rust:
+      applies-to: version-updates
+      patterns: ["*"]
