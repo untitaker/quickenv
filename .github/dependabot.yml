@@ -3,7 +3,7 @@ updates:
 - package-ecosystem: cargo
   directories: ["/"]
   schedule:
-    interval: weekly
+    interval: monthly
   groups:
     rust:
       applies-to: version-updates
