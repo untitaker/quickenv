@@ -33,8 +33,6 @@ common commands (`yarn`, `npm`, `node`).
 
 ## Installation
 
-**quickenv is work in progress. that said, I use it daily at work**
-
 [Download the latest binary](https://github.com/untitaker/quickenv/releases) and:
 
 ```bash
