@@ -39,9 +39,7 @@ Install quickenv:
 * [from AUR for ArchLinux](https://aur.archlinux.org/packages/quickenv), e.g. `paru -S quickenv`
 * [or build from source](#ref-build-from-source)
 
-### Other
-
-[Download the latest binary](https://github.com/untitaker/quickenv/releases) and:
+Then set it up in your shell:
 
 ```bash
 # Into your bashrc/zshrc. This should be at the front of your PATH, such that
