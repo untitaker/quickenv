@@ -33,14 +33,11 @@ common commands (`yarn`, `npm`, `node`).
 
 ## Installation
 
-### Arch Linux
+Install quickenv:
 
-quickenv is available as an [AUR package](https://aur.archlinux.org/packages/quickenv).
-It can be installed using an AUR helper (e.g. paru):
-
-```bash
-paru -S quickenv
-```
+* [from GitHub](https://github.com/untitaker/quickenv/releases) as a standalone binary
+* [from AUR for ArchLinux](https://aur.archlinux.org/packages/quickenv), e.g. `paru -S quickenv`
+* [or build from source](#ref-build-from-source)
 
 ### Other
 
@@ -66,7 +63,9 @@ Some notes:
 
 * `quickenv` assumes a POSIX environment.
 
-### Installation from source
+<a name=ref-build-from-source></a>
+
+### Building from source
 
 ```bash
 cargo install quickenv  # latest stable release
