@@ -776,7 +776,7 @@ fn find_shimmed_binary(
 
     for entry in std::env::split_paths(&old_path) {
         if quickenv_home.join("bin") == entry
-            || std::fs::canonicalize(&entry).map_or(false, |x| x == quickenv_home.join("bin"))
+            || std::fs::canonicalize(&entry).is_ok_and(|x| x == quickenv_home.join("bin"))
         {
             log::debug!("removing own entry from PATH: {}", entry.display());
             continue;
