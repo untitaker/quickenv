@@ -33,6 +33,17 @@ common commands (`yarn`, `npm`, `node`).
 
 ## Installation
 
+### Arch Linux
+
+quickenv is available as an [AUR package](https://aur.archlinux.org/packages/quickenv).
+It can be installed using an AUR helper (e.g. paru):
+
+```bash
+paru -S quickenv
+```
+
+### Other
+
 [Download the latest binary](https://github.com/untitaker/quickenv/releases) and:
 
 ```bash
