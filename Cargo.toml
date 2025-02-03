@@ -24,17 +24,17 @@ dialoguer = { version = "0.11.0", default-features = false }
 env_logger = { version = "0.11.6", default-features = false }
 exec = "0.3.1"
 hex = "0.4.3"
-log = "0.4.17"
-tempfile = "3.14.0"
+log = "0.4.25"
+tempfile = "3.16.0"
 
 # using fork because we're requiring this bugfix:
 # https://github.com/ogham/rust-term-grid/pull/14
 uutils_term_grid = "0.6.0"
-thiserror = "2.0.9"
+thiserror = "2.0.11"
 which = "7"
 
 [dev-dependencies]
-insta = { version = "1.41.0", features = ["filters"], default-features = false }
+insta = { version = "1.42.1", features = ["filters"], default-features = false }
 insta-cmd = "0.6.0"
 maplit = "1.0.2"
 regex = { version = "1.6.0", default-features = false }
