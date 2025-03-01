@@ -13,8 +13,8 @@ documentation = "https://github.com/untitaker/quickenv"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-anyhow = "1.0.95"
-blake3 = "1.5.5"
+anyhow = "1.0.96"
+blake3 = "1.6.1"
 # Disable clap's suggestions feature, because it sometimes suggests nonsense:
 # https://github.com/clap-rs/clap/discussions/3962
 clap = { version = "4", features = ["derive", "std", "color"], default-features = false }
@@ -24,8 +24,8 @@ dialoguer = { version = "0.11.0", default-features = false }
 env_logger = { version = "0.11.6", default-features = false }
 exec = "0.3.1"
 hex = "0.4.3"
-log = "0.4.25"
-tempfile = "3.16.0"
+log = "0.4.26"
+tempfile = "3.17.1"
 
 # using fork because we're requiring this bugfix:
 # https://github.com/ogham/rust-term-grid/pull/14
