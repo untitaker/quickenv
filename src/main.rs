@@ -12,7 +12,7 @@ use std::process::{self, Stdio};
 use log::{Level, LevelFilter};
 
 use anyhow::{Context, Error};
-use clap::Parser;
+use clap::{Subcommand, Parser};
 use console::style;
 
 mod core;
@@ -23,11 +23,11 @@ use crate::core::resolve_envrc_context;
 
 // Disabling colored help because the after_help isn't colored, for consistency
 #[derive(Parser, Debug)]
-#[clap(
+#[command(
     version,
     about,
-    disable_colored_help = true,
-    after_help = "ENVIRONMENT VARIABLES:
+    long_about = None,
+    after_help = "Environment variables:
     QUICKENV_LOG=debug to enable debug output (in shim commands as well)
     QUICKENV_LOG=error to silence everything but errors
     QUICKENV_NO_SHIM=1 to disable loading of .envrc, and effectively disable shims
@@ -37,11 +37,11 @@ use crate::core::resolve_envrc_context;
 "
 )]
 struct Args {
-    #[clap(subcommand)]
+    #[command(subcommand)]
     subcommand: Command,
 }
 
-#[derive(Parser, Debug)]
+#[derive(Subcommand, Debug)]
 enum Command {
     /// Execute .envrc in the current or parent directory, and cache the new variables.
     Reload,
