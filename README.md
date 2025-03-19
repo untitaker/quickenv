@@ -127,8 +127,12 @@ quickenv shim bash
 quickenv shim make
 
 # Curious which binary is actually being executed?
+which make
+# --> /home/user/.quickenv/bin/make
 quickenv which make
-# /home/user/.quickenv/bin/make
+# --> /usr/bin/make
+quickenv exec which make
+# --> /usr/bin/make
 
 # Or for general debugging, increase the log level:
 QUICKENV_LOG=debug make
