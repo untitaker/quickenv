@@ -12,7 +12,7 @@ use std::process::{self, Stdio};
 use log::{Level, LevelFilter};
 
 use anyhow::{Context, Error};
-use clap::{Subcommand, Parser};
+use clap::{Parser, Subcommand};
 use console::style;
 
 mod core;
