@@ -14,18 +14,18 @@ documentation = "https://github.com/untitaker/quickenv"
 
 [dependencies]
 anyhow = "1.0.95"
-blake3 = "1.5.5"
+blake3 = "1.8.0"
 # Disable clap's suggestions feature, because it sometimes suggests nonsense:
 # https://github.com/clap-rs/clap/discussions/3962
-clap = { version = "4.5.32", features = ["derive", "std", "help", "usage"], default-features = false }
+clap = { version = "4.5.34", features = ["derive", "std", "help", "usage"], default-features = false }
 console = { version = "0.15.10", default-features = false }
 ctrlc = "3.2.2"
 dialoguer = { version = "0.11.0", default-features = false }
 env_logger = { version = "0.11.6", default-features = false }
 exec = "0.3.1"
 hex = "0.4.3"
-log = "0.4.25"
-tempfile = "3.16.0"
+log = "0.4.27"
+tempfile = "3.19.1"
 
 # using fork because we're requiring this bugfix:
 # https://github.com/ogham/rust-term-grid/pull/14
