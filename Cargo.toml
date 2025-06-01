@@ -13,28 +13,28 @@ documentation = "https://github.com/untitaker/quickenv"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-anyhow = "1.0.95"
-blake3 = "1.8.0"
+anyhow = "1.0.98"
+blake3 = "1.8.2"
 # Disable clap's suggestions feature, because it sometimes suggests nonsense:
 # https://github.com/clap-rs/clap/discussions/3962
-clap = { version = "4.5.34", features = ["derive", "std", "help", "usage"], default-features = false }
+clap = { version = "4.5.39", features = ["derive", "std", "help", "usage"], default-features = false }
 console = { version = "0.15.10", default-features = false }
-ctrlc = "3.2.2"
+ctrlc = "3.4.7"
 dialoguer = { version = "0.11.0", default-features = false }
-env_logger = { version = "0.11.6", default-features = false }
+env_logger = { version = "0.11.8", default-features = false }
 exec = "0.3.1"
 hex = "0.4.3"
 log = "0.4.27"
-tempfile = "3.19.1"
+tempfile = "3.20.0"
 
 # using fork because we're requiring this bugfix:
 # https://github.com/ogham/rust-term-grid/pull/14
-uutils_term_grid = "0.6.0"
+uutils_term_grid = "0.7.0"
 thiserror = "2.0.11"
 which = "7"
 
 [dev-dependencies]
-insta = { version = "1.42.1", features = ["filters"], default-features = false }
+insta = { version = "1.43.1", features = ["filters"], default-features = false }
 insta-cmd = "0.6.0"
 maplit = "1.0.2"
 regex = { version = "1.6.0", default-features = false }
