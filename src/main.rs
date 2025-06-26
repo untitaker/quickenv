@@ -726,11 +726,14 @@ fn exec_shimmed_binary(program_name: &OsStr, args: Vec<OsString>) -> Result<(), 
             CheckUnshimmedCommands::new(&quickenv_home).unwrap_or(CheckUnshimmedCommands::Disabled);
         let _ignored = unshimmed_commands.exclude_current();
 
-        let exitcode = process::Command::new(shimmed_binary_result.path)
+        let mut child = process::Command::new(shimmed_binary_result.path)
             .args(args)
             .envs(shimmed_binary_result.envvars_override)
-            .status()
+            .spawn()
             .context("failed to spawn shim subcommand")?;
+
+        signals::pass_control_to_shim();
+        let exitcode = child.wait().context("failed to wait for shim subcommand")?;
 
         let _ignored = unshimmed_commands.check_unshimmed_commands(true);
 
