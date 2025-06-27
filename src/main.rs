@@ -726,6 +726,8 @@ fn exec_shimmed_binary(program_name: &OsStr, args: Vec<OsString>) -> Result<(), 
             CheckUnshimmedCommands::new(&quickenv_home).unwrap_or(CheckUnshimmedCommands::Disabled);
         let _ignored = unshimmed_commands.exclude_current();
 
+        signals::pass_control_to_shim();
+
         let exitcode = process::Command::new(shimmed_binary_result.path)
             .args(args)
             .envs(shimmed_binary_result.envvars_override)

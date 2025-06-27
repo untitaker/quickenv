@@ -604,3 +604,99 @@ fn test_which_pretend_shimmed() -> Result<(), Error> {
     "###);
     Ok(())
 }
+
+#[test]
+fn test_shim_ctrl_c_handling() -> Result<(), Error> {
+    let harness = setup()?;
+
+    // Create a test script that sets up a signal handler
+    write(harness.join(".envrc"), "export PATH=test_bin:$PATH\n")?;
+    create_dir_all(harness.join("test_bin"))?;
+
+    // Create a test script that demonstrates the signal handling behavior
+    write(
+        harness.join("test_bin/signal_test"),
+        r#"#!/bin/sh
+myexit() { 
+    echo "shutdown"
+    sleep 0.1
+    echo "bye"
+}
+trap myexit SIGINT
+sleep 1
+"#,
+    )?;
+    set_executable(harness.join("test_bin/signal_test"))?;
+
+    assert_cmd!(harness, quickenv "reload", @r###"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+
+    ----- stderr -----
+    [WARN quickenv] 1 unshimmed commands (1 new). Use 'quickenv shim' to make them available.
+    Set QUICKENV_NO_SHIM_WARNINGS=1 to silence this message.
+    "###);
+
+    assert_cmd!(harness, quickenv "shim" "signal_test", @r###"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+
+    ----- stderr -----
+    Created 1 new shims in [scrubbed $HOME]/.quickenv/bin/.
+    Use 'quickenv unshim <command>' to remove them again.
+    "###);
+
+    // Test that the shim properly handles SIGINT by using timeout
+    // This reproduces the exact issue from GitHub issue #12
+    let harness_modified = harness;
+
+    // Use the same repro case as in the issue
+    let timeout_cmd = format!(
+        "timeout -s SIGINT 0.1 {} exec sh -c 'myexit() {{ echo shutdown; sleep 1; echo bye; }}; trap myexit SIGINT; sleep 10'; echo new_prompt",
+        harness_modified.which("quickenv")?.display()
+    );
+
+    let output = std::process::Command::new("sh")
+        .arg("-c")
+        .arg(&timeout_cmd)
+        .current_dir(&harness_modified.cwd)
+        .envs(&harness_modified.env)
+        .output()?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    // verify that the signal was handled properly. we should see:
+    // 1. "shutdown"
+    // 2. "bye"
+    // 3. "new_prompt"
+    assert!(
+        stdout.contains("shutdown"),
+        "Expected 'shutdown' in output: {}",
+        stdout
+    );
+    assert!(
+        stdout.contains("bye"),
+        "Expected 'bye' in output: {}",
+        stdout
+    );
+    assert!(
+        stdout.contains("new_prompt"),
+        "Expected 'new_prompt' in output: {}",
+        stdout
+    );
+
+    // "bye" must come before "new_prompt"
+    // If signal handling is not done correctly, quickenv exits immediately and "new_prompt"
+    // appears before "bye"
+    let bye_pos = stdout.find("bye").expect("Expected 'bye' in output");
+    let new_prompt_pos = stdout
+        .find("new_prompt")
+        .expect("Expected 'new_prompt' in output");
+    assert!(bye_pos < new_prompt_pos,
+        "CTRL-C handling bug detected: 'bye' should come before 'new_prompt'. Output order indicates quickenv exited early and orphaned the child process. Actual output: {}", 
+        stdout);
+
+    Ok(())
+}
