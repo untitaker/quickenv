@@ -674,7 +674,7 @@ sleep 1
 
     // Use the same repro case as in the issue
     let timeout_cmd = format!(
-        "timeout -s SIGINT 0.1 {} exec sh -c 'myexit() {{ echo shutdown; sleep 1; echo bye; }}; trap myexit SIGINT; sleep 10'; echo new_prompt",
+        "timeout -s SIGINT 0.5 {} exec sh -c 'myexit() {{ echo shutdown; sleep 1; echo bye; }}; trap myexit SIGINT; sleep 10'; echo new_prompt",
         harness_modified.which("quickenv")?.display()
     );
 
