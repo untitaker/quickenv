@@ -49,7 +49,11 @@ enum Command {
     ///
     /// For example, use 'quickenv reload && eval "$(quickenv vars)"' to load the environment like
     /// direnv normally would.
-    Vars,
+    Vars {
+        /// Quiet mode: print nothing if there is no .envrc
+        #[clap(long, short)]
+        quiet: bool,
+    },
     /// Create a new shim binary in ~/.quickenv/bin/.
     ///
     /// Executing that binary will run in the context of the nearest .envrc, as if it was activated
@@ -142,7 +146,7 @@ fn main_inner() -> Result<(), Error> {
 
     match args.subcommand {
         Command::Reload => command_reload(),
-        Command::Vars => command_vars(),
+        Command::Vars { quiet } => command_vars(quiet),
         Command::Shim { commands, yes } => command_shim(commands, yes),
         Command::Unshim { commands } => command_unshim(commands),
         Command::Exec { program_name, args } => command_exec(program_name, args),
@@ -519,9 +523,16 @@ impl<'a> CheckUnshimmedCommands<'a> {
     }
 }
 
-fn command_vars() -> Result<(), Error> {
+fn command_vars(quiet: bool) -> Result<(), Error> {
     let quickenv_home = crate::core::get_quickenv_home()?;
-    let ctx = resolve_envrc_context(&quickenv_home)?;
+
+    let ctx = match resolve_envrc_context(&quickenv_home) {
+        Ok(ctx) => ctx,
+        Err(core::Error::NoEnvrc) if quiet => {
+            return Ok(());
+        }
+        Err(e) => return Err(e.into()),
+    };
 
     if let Some(envvars) = core::get_envvars(&ctx)? {
         for (k, v) in envvars {
@@ -531,6 +542,8 @@ fn command_vars() -> Result<(), Error> {
             io::stdout().write_all(b"\n")?;
         }
 
+        Ok(())
+    } else if quiet {
         Ok(())
     } else {
         log::error!(

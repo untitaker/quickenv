@@ -167,6 +167,26 @@ fn test_verbosity() -> Result<(), Error> {
 }
 
 #[test]
+fn test_vars_quiet() -> Result<(), Error> {
+    let harness = setup()?;
+    assert_cmd!(harness, quickenv "vars" "-q",  @r###"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+
+    ----- stderr -----
+    "###);
+    assert_cmd!(harness, quickenv "vars" "--quiet",  @r###"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+
+    ----- stderr -----
+    "###);
+    Ok(())
+}
+
+#[test]
 fn test_script_failure() -> Result<(), Error> {
     let harness = setup()?;
     write(harness.join(".envrc"), "exit 1")?;
