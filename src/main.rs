@@ -101,7 +101,7 @@ fn main() {
     match main_inner() {
         Ok(()) => (),
         Err(e) => {
-            log::error!("{:?}", e);
+            log::error!("{e:?}");
             std::process::exit(1);
         }
     }
@@ -380,7 +380,7 @@ fn get_missing_shims(
         match get_missing_shims_from_dir(quickenv_home, &directory, &mut rv) {
             Ok(()) => (),
             Err(e) => {
-                log::debug!("skipping over directory {:?}: {:?}", directory, e);
+                log::debug!("skipping over directory {directory:?}: {e:?}");
                 continue;
             }
         }
@@ -716,7 +716,7 @@ fn command_unshim(commands: Vec<String>) -> Result<(), Error> {
 }
 
 fn exec_shimmed_binary(program_name: &OsStr, args: Vec<OsString>) -> Result<(), Error> {
-    log::debug!("attempting to launch shim for {:?}", program_name);
+    log::debug!("attempting to launch shim for {program_name:?}");
 
     let quickenv_home = crate::core::get_quickenv_home()?;
     let shimmed_binary_result = find_shimmed_binary(&quickenv_home, program_name)
@@ -724,7 +724,7 @@ fn exec_shimmed_binary(program_name: &OsStr, args: Vec<OsString>) -> Result<(), 
 
     if std::env::var("QUICKENV_SHIM_EXEC").unwrap_or_default() == "1" {
         for (k, v) in shimmed_binary_result.envvars_override {
-            log::debug!("export {:?}={:?}", k, v);
+            log::debug!("export {k:?}={v:?}");
             std::env::set_var(k, v);
         }
 
@@ -837,7 +837,7 @@ fn check_for_shim() -> Result<(), Error> {
         .to_str()
         .unwrap();
 
-    log::debug!("argv[0] is {:?}", program_name);
+    log::debug!("argv[0] is {program_name:?}");
 
     if program_basename == "quickenv" {
         log::debug!("own program name is quickenv, so no shim running");
@@ -845,7 +845,7 @@ fn check_for_shim() -> Result<(), Error> {
     }
 
     exec_shimmed_binary(&program_name, args_iter.collect())
-        .with_context(|| format!("failed to run {}", program_basename))
+        .with_context(|| format!("failed to run {program_basename}"))
 }
 
 fn command_exec(program_name: OsString, args: Vec<OsString>) -> Result<(), Error> {
@@ -857,7 +857,7 @@ fn command_which(program_name: OsString, pretend_shimmed: bool) -> Result<(), Er
     if !pretend_shimmed
         && which::which(&program_name)? != quickenv_home.join("bin").join(&program_name)
     {
-        log::error!("{:?} is not shimmed by quickenv", program_name);
+        log::error!("{program_name:?} is not shimmed by quickenv");
         std::process::exit(1);
     }
 

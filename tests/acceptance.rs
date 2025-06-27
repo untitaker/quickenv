@@ -693,18 +693,12 @@ sleep 1
     // 3. "new_prompt"
     assert!(
         stdout.contains("shutdown"),
-        "Expected 'shutdown' in output: {}",
-        stdout
+        "Expected 'shutdown' in output: {stdout}"
     );
-    assert!(
-        stdout.contains("bye"),
-        "Expected 'bye' in output: {}",
-        stdout
-    );
+    assert!(stdout.contains("bye"), "Expected 'bye' in output: {stdout}");
     assert!(
         stdout.contains("new_prompt"),
-        "Expected 'new_prompt' in output: {}",
-        stdout
+        "Expected 'new_prompt' in output: {stdout}"
     );
 
     // "bye" must come before "new_prompt"
@@ -715,8 +709,7 @@ sleep 1
         .find("new_prompt")
         .expect("Expected 'new_prompt' in output");
     assert!(bye_pos < new_prompt_pos,
-        "CTRL-C handling bug detected: 'bye' should come before 'new_prompt'. Output order indicates quickenv exited early and orphaned the child process. Actual output: {}", 
-        stdout);
+        "CTRL-C handling bug detected: 'bye' should come before 'new_prompt'. Output order indicates quickenv exited early and orphaned the child process. Actual output: {stdout}");
 
     Ok(())
 }
