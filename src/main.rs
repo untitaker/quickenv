@@ -33,7 +33,7 @@ use crate::core::resolve_envrc_context;
     QUICKENV_NO_SHIM=1 to disable loading of .envrc, and effectively disable shims
     QUICKENV_SHIM_EXEC=1 to directly exec() shims instead of spawning them as subprocess. This can help with attaching debuggers.
     QUICKENV_NO_SHIM_WARNINGS=1 to disable nags about running 'quickenv shim' everytime a new binary is added
-    QUICKENV_PRELUDE='eval \"$(direnv stdlib)\"' can be overridden to something else to get rid of the direnv stdlib and therefore direnv dependency, or to inject additional code before executing each envrc.
+    QUICKENV_PRELUDE can be overridden to customize the shell code injected before executing each envrc. By default, quickenv loads ~/.config/direnv/lib/*.sh files and then runs 'eval \"$(direnv stdlib)\"' to mimic direnv's behavior.
 "
 )]
 struct Args {
@@ -286,7 +286,19 @@ fn compute_envvars(quickenv_home: &Path) -> Result<(), Error> {
     };
 
     let prelude = std::env::var("QUICKENV_PRELUDE")
-        .unwrap_or_else(|_| r#"eval "$(direnv stdlib)""#.to_owned());
+        .unwrap_or_else(|_| {
+            // Load direnv lib files (mimicking direnv's default behavior)
+            // and then load direnv stdlib
+            let direnv_config_dir = std::env::var("XDG_CONFIG_HOME")
+                .unwrap_or_else(|_| {
+                    std::env::var("HOME")
+                        .map(|home| format!("{home}/.config"))
+                        .unwrap_or_else(|_| "/tmp/.config".to_string())
+                });
+            format!(
+                "for f in {direnv_config_dir}/direnv/lib/*.sh; do [ -r \"$f\" ] && . \"$f\"; done; eval \"$(direnv stdlib)\""
+            )
+        });
 
     write!(
         temp_script,

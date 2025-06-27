@@ -144,6 +144,34 @@ QUICKENV_LOG=debug make
 # ...
 ```
 
+## Command Reference
+
+```
+An unintrusive environment manager
+
+Usage: quickenv <COMMAND>
+
+Commands:
+  reload  Execute .envrc in the current or parent directory, and cache the new variables
+  vars    Dump out cached environment variables
+  shim    Create a new shim binary in ~/.quickenv/bin/
+  unshim  Remove a shim binary from ~/.quickenv/bin/
+  exec    Run a program with .envrc loaded without having to shim it
+  which   Determine which program quickenv's shim would launch under the hood
+  help    Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help     Print help
+  -V, --version  Print version
+
+Environment variables:
+    QUICKENV_LOG=debug to enable debug output (in shim commands as well)
+    QUICKENV_LOG=error to silence everything but errors
+    QUICKENV_NO_SHIM=1 to disable loading of .envrc, and effectively disable shims
+    QUICKENV_SHIM_EXEC=1 to directly exec() shims instead of spawning them as subprocess. This can help with attaching debuggers.
+    QUICKENV_NO_SHIM_WARNINGS=1 to disable nags about running 'quickenv shim' everytime a new binary is added
+    QUICKENV_PRELUDE can be overridden to customize the shell code injected before executing each envrc. By default, quickenv loads ~/.config/direnv/lib/*.sh files and then runs 'eval "$(direnv stdlib)"' to mimic direnv's behavior.
+```
 ## License
 
 Licensed under `MIT`, see `LICENSE`.

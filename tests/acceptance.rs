@@ -713,3 +713,81 @@ sleep 1
 
     Ok(())
 }
+
+#[test]
+fn test_direnv_lib_loading() -> Result<(), Error> {
+    let harness = setup()?;
+
+    // Create a fake direnv lib directory and file
+    let direnv_lib_dir = harness.join(".config/direnv/lib");
+    create_dir_all(&direnv_lib_dir)?;
+
+    // Create a lib file that exports a custom function and variable
+    write(
+        direnv_lib_dir.join("test_lib.sh"),
+        r#"#!/bin/bash
+# Test direnv lib file
+export DIRENV_LIB_LOADED=true
+my_custom_function() {
+    echo "custom function from direnv lib"
+}
+"#,
+    )?;
+
+    // Create .envrc that uses the function and variable from the lib
+    write(
+        harness.join(".envrc"),
+        r#"my_custom_function
+echo "DIRENV_LIB_LOADED is: $DIRENV_LIB_LOADED"
+export PATH=test_bin:$PATH
+"#,
+    )?;
+
+    // Create a test binary
+    create_dir_all(harness.join("test_bin"))?;
+    write(
+        harness.join("test_bin/hello"),
+        "#!/bin/sh\necho hello from test bin",
+    )?;
+    set_executable(harness.join("test_bin/hello"))?;
+
+    // Set XDG_CONFIG_HOME to point to our test config
+    let mut test_harness = harness;
+    test_harness.set_var("XDG_CONFIG_HOME", test_harness.join(".config"));
+
+    // Test that lib loading works during reload
+    assert_cmd!(test_harness, quickenv "reload", @r###"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+    custom function from direnv lib
+    DIRENV_LIB_LOADED is: true
+
+    ----- stderr -----
+    [WARN quickenv] 1 unshimmed commands (1 new). Use 'quickenv shim' to make them available.
+    Set QUICKENV_NO_SHIM_WARNINGS=1 to silence this message.
+    "###);
+
+    // Test that lib loading works when executing shimmed commands
+    assert_cmd!(test_harness, quickenv "shim" "hello", @r###"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+
+    ----- stderr -----
+    Created 1 new shims in [scrubbed $HOME]/.quickenv/bin/.
+    Use 'quickenv unshim <command>' to remove them again.
+    "###);
+
+    // The environment should be loaded properly when running the shimmed command
+    assert_cmd!(test_harness, hello, @r###"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+    hello from test bin
+
+    ----- stderr -----
+    "###);
+
+    Ok(())
+}
