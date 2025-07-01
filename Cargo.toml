@@ -17,8 +17,8 @@ anyhow = "1.0.98"
 blake3 = "1.8.2"
 # Disable clap's suggestions feature, because it sometimes suggests nonsense:
 # https://github.com/clap-rs/clap/discussions/3962
-clap = { version = "4.5.39", features = ["derive", "std", "help", "usage"], default-features = false }
-console = { version = "0.15.10", default-features = false }
+clap = { version = "4.5.40", features = ["derive", "std", "help", "usage"], default-features = false }
+console = { version = "0.16.0", default-features = false }
 ctrlc = "3.4.7"
 dialoguer = { version = "0.11.0", default-features = false }
 env_logger = { version = "0.11.8", default-features = false }
